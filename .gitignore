@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.accdb
+*.mdb
+data/epa.db
+uploads/
+files/
+backups/
+db-inspection-output.json
+temp_*.ps1
+*.bat

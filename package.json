@@ -1,0 +1,98 @@
+{
+  "name": "epa-database-system",
+  "version": "4.5.0",
+  "description": "EPA Database System — Environmental Protection Agency Data Management",
+  "main": "electron-main.js",
+  "author": "EPA Ghana",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "node server.js",
+    "electron": "electron .",
+    "migrate": "node migrate.js",
+    "create-admin": "node create-admin.js",
+    "dist": "electron-builder --win",
+    "dist:portable": "electron-builder --win portable",
+    "pack": "electron-builder --dir"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "bcryptjs": "^2.4.3",
+    "bonjour-service": "^1.3.0",
+    "call-bind-apply-helpers": "^1.0.2",
+    "define-properties": "^1.2.1",
+    "es-set-tostringtag": "^2.1.0",
+    "express": "^4.21.0",
+    "express-rate-limit": "^8.2.1",
+    "globalthis": "^1.0.4",
+    "googleapis": "^171.4.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mdb-reader": "^3.1.0",
+    "multer": "^2.0.2",
+    "node-cron": "^4.2.1",
+    "pdfjs-dist": "^3.11.174",
+    "qrcode": "^1.5.4",
+    "side-channel-list": "^1.0.0",
+    "side-channel-map": "^1.0.1",
+    "side-channel-weakmap": "^1.0.2",
+    "sql.js": "^1.10.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.epa.database",
+    "productName": "EPA Database System",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "artifactName": "EPA Database System Update ${version}.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "EPA Database",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "menuCategory": "EPA",
+      "license": null
+    },
+    "afterPack": "./afterPack.js",
+    "files": [
+      "**/*",
+      "!dist/**",
+      "!.git/**",
+      "!*.accdb",
+      "!db-inspection-output.json",
+      "!temp_*.ps1",
+      "!install-service.bat",
+      "!backup.bat",
+      "!start-server.bat",
+      "!README.md",
+      "!afterPack.js",
+      "!data/**",
+      "!uploads/**",
+      "!files/**",
+      "!backups/**",
+      "!generate-icon.js"
+    ],
+    "extraResources": [],
+    "asar": false
+  }
+}
