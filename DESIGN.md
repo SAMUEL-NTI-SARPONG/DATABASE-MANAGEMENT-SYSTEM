@@ -101,36 +101,36 @@ The app uses a **three-panel layout** inspired by VS Code:
 
 ### Dark Theme (Default)
 
-| Token | Hex | Usage |
-|-------|-----|-------|
-| `--bg-primary` | `#1e1e1e` | Base background — activity bar, main content |
-| `--bg-secondary` | `#252526` | Sidebar, modals, dropdowns |
-| `--bg-tertiary` | `#2d2d2d` | Cards, input backgrounds, hover states |
-| `--bg-elevated` | `#333333` | Elevated cards, tooltips |
-| `--bg-hover` | `#3a3a3a` | Hover state backgrounds |
-| `--bg-active` | `#404040` | Active/pressed state |
-| `--bg-card` | `#2a2a2a` | Data cards, filter groups |
-| `--border` | `#404040` | Primary borders |
-| `--text-primary` | `#cccccc` | Body text |
-| `--text-bright` | `#e0e0e0` | Emphasized text |
-| `--text-white` | `#ffffff` | Headings, strong emphasis |
-| `--text-dim` | `#808080` | Secondary text |
-| `--text-muted` | `#6a6a6a` | Disabled/placeholder text |
-| `--accent` | `#0078d4` | Primary action color (Microsoft Blue) |
+| Token            | Hex       | Usage                                        |
+| ---------------- | --------- | -------------------------------------------- |
+| `--bg-primary`   | `#1e1e1e` | Base background — activity bar, main content |
+| `--bg-secondary` | `#252526` | Sidebar, modals, dropdowns                   |
+| `--bg-tertiary`  | `#2d2d2d` | Cards, input backgrounds, hover states       |
+| `--bg-elevated`  | `#333333` | Elevated cards, tooltips                     |
+| `--bg-hover`     | `#3a3a3a` | Hover state backgrounds                      |
+| `--bg-active`    | `#404040` | Active/pressed state                         |
+| `--bg-card`      | `#2a2a2a` | Data cards, filter groups                    |
+| `--border`       | `#404040` | Primary borders                              |
+| `--text-primary` | `#cccccc` | Body text                                    |
+| `--text-bright`  | `#e0e0e0` | Emphasized text                              |
+| `--text-white`   | `#ffffff` | Headings, strong emphasis                    |
+| `--text-dim`     | `#808080` | Secondary text                               |
+| `--text-muted`   | `#6a6a6a` | Disabled/placeholder text                    |
+| `--accent`       | `#0078d4` | Primary action color (Microsoft Blue)        |
 
 ### Semantic Colors
 
 Each semantic color has a solid variant and a `*-bg` variant at ~12% opacity for backgrounds:
 
-| Color | Solid | Background | Usage |
-|-------|-------|------------|-------|
-| Green | `#4ec9b0` | `rgba(78,201,176,0.12)` | Success, valid status, active badges |
-| Blue | `#569cd6` | `rgba(86,156,214,0.12)` | Information, links, renewal tags |
-| Orange | `#ce9178` | `rgba(206,145,120,0.12)` | Warnings, pending states |
-| Yellow | `#dcdcaa` | `rgba(220,220,170,0.12)` | Caution, expiring soon |
-| Red | `#f14c4c` | `rgba(241,76,76,0.12)` | Error, danger, expired, delete |
-| Purple | `#c586c0` | `rgba(197,134,192,0.12)` | Special states, roles |
-| Teal | `#4fc1ff` | `rgba(79,193,255,0.12)` | Accent variant, count badges |
+| Color  | Solid     | Background               | Usage                                |
+| ------ | --------- | ------------------------ | ------------------------------------ |
+| Green  | `#4ec9b0` | `rgba(78,201,176,0.12)`  | Success, valid status, active badges |
+| Blue   | `#569cd6` | `rgba(86,156,214,0.12)`  | Information, links, renewal tags     |
+| Orange | `#ce9178` | `rgba(206,145,120,0.12)` | Warnings, pending states             |
+| Yellow | `#dcdcaa` | `rgba(220,220,170,0.12)` | Caution, expiring soon               |
+| Red    | `#f14c4c` | `rgba(241,76,76,0.12)`   | Error, danger, expired, delete       |
+| Purple | `#c586c0` | `rgba(197,134,192,0.12)` | Special states, roles                |
+| Teal   | `#4fc1ff` | `rgba(79,193,255,0.12)`  | Accent variant, count badges         |
 
 ### Light Theme
 
@@ -148,15 +148,15 @@ The light theme inverts all values — light backgrounds (`#f5f5f5` → `#ffffff
 
 ### Type Scale
 
-| Element | Size | Weight | Color |
-|---------|------|--------|-------|
-| Page titles | 18px | 700 | `--text-white` |
-| Section headers | 13px | 600 | `--text-white` |
-| Card titles | 14px–16px | 600 | `--text-white` |
-| Body text | 13px | 400 | `--text-primary` |
-| Labels | 11px | 500 | `--text-muted` |
-| Small text/badges | 10px–11px | 500–600 | Varies |
-| Data card fields | 12px | 400–500 | `--text-dim` / `--text-bright` |
+| Element           | Size      | Weight  | Color                          |
+| ----------------- | --------- | ------- | ------------------------------ |
+| Page titles       | 18px      | 700     | `--text-white`                 |
+| Section headers   | 13px      | 600     | `--text-white`                 |
+| Card titles       | 14px–16px | 600     | `--text-white`                 |
+| Body text         | 13px      | 400     | `--text-primary`               |
+| Labels            | 11px      | 500     | `--text-muted`                 |
+| Small text/badges | 10px–11px | 500–600 | Varies                         |
+| Data card fields  | 12px      | 400–500 | `--text-dim` / `--text-bright` |
 
 ### Letter Spacing
 
@@ -170,22 +170,22 @@ The light theme inverts all values — light backgrounds (`#f5f5f5` → `#ffffff
 
 ### Border Radius Tokens
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--radius-sm` | `6px` | Buttons, input fields, small cards |
-| `--radius-md` | `8px` | Cards, dropdowns, context menus |
-| `--radius-lg` | `12px` | Modals, large containers, sections |
-| `--radius-xl` | `16px` | Dashboard welcome banner, large cards |
+| Token           | Value  | Usage                                 |
+| --------------- | ------ | ------------------------------------- |
+| `--radius-sm`   | `6px`  | Buttons, input fields, small cards    |
+| `--radius-md`   | `8px`  | Cards, dropdowns, context menus       |
+| `--radius-lg`   | `12px` | Modals, large containers, sections    |
+| `--radius-xl`   | `16px` | Dashboard welcome banner, large cards |
 | `--radius-pill` | `50px` | Badge pills, status tags, role badges |
 
 ### Shadow System
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--shadow-sm` | `0 2px 6px rgba(0,0,0,0.3)` | Subtle elevation (cards) |
-| `--shadow-md` | `0 4px 16px rgba(0,0,0,0.4)` | Dropdowns, popovers |
-| `--shadow-lg` | `0 8px 32px rgba(0,0,0,0.5)` | Modals |
-| `--shadow-xl` | `0 12px 48px rgba(0,0,0,0.6)` | Overlay panels |
+| Token         | Value                         | Usage                    |
+| ------------- | ----------------------------- | ------------------------ |
+| `--shadow-sm` | `0 2px 6px rgba(0,0,0,0.3)`   | Subtle elevation (cards) |
+| `--shadow-md` | `0 4px 16px rgba(0,0,0,0.4)`  | Dropdowns, popovers      |
+| `--shadow-lg` | `0 8px 32px rgba(0,0,0,0.5)`  | Modals                   |
+| `--shadow-xl` | `0 12px 48px rgba(0,0,0,0.6)` | Overlay panels           |
 
 ### Common Spacing
 
@@ -215,6 +215,7 @@ The light theme inverts all values — light backgrounds (`#f5f5f5` → `#ffffff
 ```
 
 **Variants**:
+
 - `.btn-primary`: `background: var(--accent)`, white text, blue hover glow
 - `.btn-sm`: `padding: 4px 10px`, `font-size: 12px`
 - `.btn-danger`: Red border and text on hover
@@ -245,15 +246,18 @@ Records are displayed as cards in a responsive CSS Grid:
   border-radius: 8px;
   padding: 14px;
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 .data-card:hover {
   border-color: var(--accent);
-  box-shadow: 0 2px 12px rgba(0,120,212,0.08);
+  box-shadow: 0 2px 12px rgba(0, 120, 212, 0.08);
 }
 ```
 
 **Structure**:
+
 ```
 ┌─────────────────────────────────────────┐
 │ [Card Title]              [#ID] [📎 2] │  ← Header: title + ID + attachment count
@@ -279,7 +283,7 @@ Modals use a **centered overlay** design with slide-up animation:
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.6);
+  background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(4px);
   z-index: 1000;
   display: flex;
@@ -293,7 +297,7 @@ Modals use a **centered overlay** design with slide-up animation:
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 12px 48px rgba(0,0,0,0.6);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
   display: flex;
   flex-direction: column;
   animation: slideUp 0.2s ease;
@@ -301,6 +305,7 @@ Modals use a **centered overlay** design with slide-up animation:
 ```
 
 **Permit/Keyword Modals** use a premium two-column layout:
+
 - Header: gradient background, emoji icon, title, subtitle, three-dots "⋮" menu
 - Body: Two-column CSS grid (`1fr 1fr`) of "PM cards" — each card is a section with right-click to edit
 - Footer: Single "Close" button (Edit/Delete moved to context menus)
@@ -327,13 +332,14 @@ Variants: `.toast-success` (green), `.toast-error` (red), `.toast-info` (blue), 
 Custom right-click menus replace the browser default in several contexts:
 
 ```css
-.att-ctx-menu {  /* Also: .pm-ctx-menu for record sections */
+.att-ctx-menu {
+  /* Also: .pm-ctx-menu for record sections */
   position: fixed;
   z-index: 99999;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.22);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
   min-width: 160px;
   padding: 4px 0;
 }
@@ -355,7 +361,9 @@ Attachments use a card-style layout with thumbnail previews:
   border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 ```
 
@@ -367,7 +375,9 @@ Attachments use a card-style layout with thumbnail previews:
 ### Input Fields
 
 ```css
-input, select, textarea {
+input,
+select,
+textarea {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -376,7 +386,9 @@ input, select, textarea {
   padding: 8px 10px;
   transition: border-color 0.2s;
 }
-input:focus, select:focus, textarea:focus {
+input:focus,
+select:focus,
+textarea:focus {
   border-color: var(--accent);
   outline: none;
 }
@@ -462,6 +474,7 @@ input:focus, select:focus, textarea:focus {
 ### Three-Dots Menu (⋮)
 
 Located in modal headers for destructive/export actions:
+
 - Delete Record (with confirmation modal)
 - Export Record (downloads as .xlsx)
 
@@ -474,6 +487,7 @@ Located in modal headers for destructive/export actions:
 ### Confirmation Modals
 
 Dangerous actions (delete, clear data, revert) use a dedicated confirmation modal:
+
 - Warning icon, descriptive text, red "Confirm" button
 - Cannot proceed without explicit click
 

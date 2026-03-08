@@ -9,3 +9,4 @@ backups/
 db-inspection-output.json
 temp_*.ps1
 *.bat
+*.xlsx

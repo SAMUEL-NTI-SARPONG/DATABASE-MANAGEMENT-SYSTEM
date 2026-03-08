@@ -707,11 +707,7 @@ const FORM_DEFINITIONS = {
     sections: [
       {
         title: "File Information",
-        fields: [
-          "FileNumber",
-          "FileLocation",
-          "OfficerWorkingOnFile",
-        ],
+        fields: ["FileNumber", "FileLocation", "OfficerWorkingOnFile"],
       },
       {
         title: "Establishment Information",
@@ -731,11 +727,7 @@ const FORM_DEFINITIONS = {
       },
       {
         title: "Application Details",
-        fields: [
-          "DateOfReceiptOfApplication",
-          "Screening",
-          "Screening_Date",
-        ],
+        fields: ["DateOfReceiptOfApplication", "Screening", "Screening_Date"],
       },
       {
         title: "Permit Details",
@@ -2014,7 +2006,9 @@ app.post("/api/permit-filter", auth, (req, res) => {
       // Map to actual column - PermittedBy is stored conceptually
       where.pop();
       if (filters.permittedBy === "Head Office") {
-        where.push("(Permitted_by_Sekondi_Office = 'No' OR Permitted_by_Sekondi_Office IS NULL OR Permitted_by_Sekondi_Office = '')");
+        where.push(
+          "(Permitted_by_Sekondi_Office = 'No' OR Permitted_by_Sekondi_Office IS NULL OR Permitted_by_Sekondi_Office = '')",
+        );
       } else {
         where.push("Permitted_by_Sekondi_Office = 'Yes'");
       }
@@ -2125,7 +2119,9 @@ app.post("/api/permit-export", auth, (req, res) => {
     }
     if (filters.permittedBy) {
       if (filters.permittedBy === "Head Office") {
-        where.push("(Permitted_by_Sekondi_Office = 'No' OR Permitted_by_Sekondi_Office IS NULL OR Permitted_by_Sekondi_Office = '')");
+        where.push(
+          "(Permitted_by_Sekondi_Office = 'No' OR Permitted_by_Sekondi_Office IS NULL OR Permitted_by_Sekondi_Office = '')",
+        );
       } else {
         where.push("Permitted_by_Sekondi_Office = 'Yes'");
       }
@@ -5652,6 +5648,326 @@ app.put("/api/field-renames/:table", auth, (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════
+//  RECORDS MANAGEMENT — hierarchical category/year/quarter
+// ══════════════════════════════════════════════════════════════
+const RECORD_CATEGORIES = ['applications_received', 'permitted_applications', 'monitoring_records'];
+
+/** List years for a category */
+app.get("/api/records/years/:category", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const cat = req.params.category;
+    if (!RECORD_CATEGORIES.includes(cat))
+      return res.status(400).json({ error: "Invalid category" });
+    const years = db.all(
+      "SELECT * FROM records_years WHERE category = ? ORDER BY year DESC",
+      [cat]
+    );
+    // Get entry counts per year/quarter
+    const counts = db.all(
+      `SELECT year, quarter, COUNT(*) as cnt FROM records_entries
+       WHERE category = ? GROUP BY year, quarter`,
+      [cat]
+    );
+    const countMap = {};
+    counts.forEach(c => {
+      if (!countMap[c.year]) countMap[c.year] = {};
+      countMap[c.year][c.quarter] = c.cnt;
+    });
+    res.json({ years, counts: countMap });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** Add a new year to a category */
+app.post("/api/records/years", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const { category, year } = req.body;
+    if (!RECORD_CATEGORIES.includes(category))
+      return res.status(400).json({ error: "Invalid category" });
+    const y = parseInt(year);
+    if (!y || y < 2000 || y > 2100)
+      return res.status(400).json({ error: "Invalid year" });
+    const existing = db.get(
+      "SELECT id FROM records_years WHERE category = ? AND year = ?",
+      [category, y]
+    );
+    if (existing)
+      return res.status(400).json({ error: "Year already exists for this category" });
+    const result = db.run(
+      "INSERT INTO records_years (category, year, created_by) VALUES (?, ?, ?)",
+      [category, y, req.user.username]
+    );
+    saveToDisk();
+    logActivity(req, "add_record_year", category, String(y));
+    res.json({ id: result.lastInsertRowid, category, year: y });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** Delete a year (admin only, only if no entries) */
+app.delete("/api/records/years/:category/:year", auth, (req, res) => {
+  try {
+    if (req.user.role !== "admin")
+      return res.status(403).json({ error: "Admin only" });
+    const db = getDb();
+    const cat = req.params.category;
+    const y = parseInt(req.params.year);
+    const count = db.get(
+      "SELECT COUNT(*) as c FROM records_entries WHERE category = ? AND year = ?",
+      [cat, y]
+    );
+    if (count && count.c > 0)
+      return res.status(400).json({ error: `Cannot delete year with ${count.c} entries. Remove entries first.` });
+    db.run("DELETE FROM records_years WHERE category = ? AND year = ?", [cat, y]);
+    saveToDisk();
+    logActivity(req, "delete_record_year", cat, String(y));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** List entries for a category/year/quarter */
+app.get("/api/records/entries/:category/:year/:quarter", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const cat = req.params.category;
+    const y = parseInt(req.params.year);
+    const q = parseInt(req.params.quarter);
+    if (!RECORD_CATEGORIES.includes(cat))
+      return res.status(400).json({ error: "Invalid category" });
+    const search = req.query.search || "";
+    let whereExtra = "";
+    let params = [cat, y, q];
+    if (search) {
+      whereExtra = ` AND (company_name LIKE ? OR sector LIKE ? OR file_number LIKE ? OR permit_number LIKE ? OR district LIKE ? OR status LIKE ?)`;
+      const s = `%${search}%`;
+      params.push(s, s, s, s, s, s);
+    }
+    const rows = db.all(
+      `SELECT * FROM records_entries WHERE category = ? AND year = ? AND quarter = ?${whereExtra} ORDER BY id DESC`,
+      params
+    );
+    res.json({ rows, total: rows.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** Get single entry */
+app.get("/api/records/entry/:id", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const row = db.get("SELECT * FROM records_entries WHERE id = ?", [parseInt(req.params.id)]);
+    if (!row) return res.status(404).json({ error: "Entry not found" });
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** Create new entry */
+app.post("/api/records/entries", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const { category, year, quarter, ...fields } = req.body;
+    if (!RECORD_CATEGORIES.includes(category))
+      return res.status(400).json({ error: "Invalid category" });
+    const validCols = db.all('PRAGMA table_info("records_entries")').map(c => c.name)
+      .filter(c => !['id', 'created_at', 'updated_at'].includes(c));
+    const data = { category, year: parseInt(year), quarter: parseInt(quarter) };
+    for (const [k, v] of Object.entries(fields)) {
+      if (validCols.includes(k)) data[k] = v === '' ? null : v;
+    }
+    if (!data.created_by) data.created_by = req.user.username;
+    const cols = Object.keys(data);
+    const vals = cols.map(c => data[c]);
+    const result = db.run(
+      `INSERT INTO records_entries (${cols.map(c => `"${c}"`).join(',')}) VALUES (${cols.map(() => '?').join(',')})`,
+      vals
+    );
+    // Ensure the year exists in records_years
+    db.run(
+      "INSERT OR IGNORE INTO records_years (category, year, created_by) VALUES (?, ?, ?)",
+      [category, data.year, req.user.username]
+    );
+    const row = db.get("SELECT * FROM records_entries WHERE id = ?", [result.lastInsertRowid]);
+    saveToDisk();
+    logActivity(req, "create_record_entry", category, `${year} Q${quarter} - ${fields.company_name || 'Entry'}`, result.lastInsertRowid);
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** Update entry */
+app.put("/api/records/entry/:id", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id);
+    const oldRow = db.get("SELECT * FROM records_entries WHERE id = ?", [id]);
+    if (!oldRow) return res.status(404).json({ error: "Entry not found" });
+    const validCols = db.all('PRAGMA table_info("records_entries")').map(c => c.name)
+      .filter(c => !['id', 'created_at'].includes(c));
+    const cols = Object.keys(req.body).filter(c => validCols.includes(c));
+    if (!cols.length) return res.status(400).json({ error: "No valid fields" });
+    const vals = cols.map(c => req.body[c] === '' ? null : req.body[c]);
+    vals.push(id);
+    db.run(
+      `UPDATE records_entries SET ${cols.map(c => `"${c}" = ?`).join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`,
+      vals
+    );
+    const row = db.get("SELECT * FROM records_entries WHERE id = ?", [id]);
+    saveToDisk();
+    logActivity(req, "update_record_entry", oldRow.category, `ID ${id}`, id);
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** Delete entry */
+app.delete("/api/records/entry/:id", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id);
+    const oldRow = db.get("SELECT * FROM records_entries WHERE id = ?", [id]);
+    if (!oldRow) return res.status(404).json({ error: "Entry not found" });
+    db.run("DELETE FROM records_entries WHERE id = ?", [id]);
+    saveToDisk();
+    logActivity(req, "delete_record_entry", oldRow.category, `${oldRow.year} Q${oldRow.quarter} - ${oldRow.company_name || 'Entry'}`, id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** Bulk import entries (CSV with forward-fill) */
+app.post("/api/records/import/:category/:year/:quarter", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const cat = req.params.category;
+    const y = parseInt(req.params.year);
+    const q = parseInt(req.params.quarter);
+    if (!RECORD_CATEGORIES.includes(cat))
+      return res.status(400).json({ error: "Invalid category" });
+    const { rows: importRows, ffillCols } = req.body;
+    if (!Array.isArray(importRows) || importRows.length === 0)
+      return res.status(400).json({ error: "No data rows" });
+    // Forward-fill logic
+    const ffCols = ffillCols || ['tentative_date', 'group_name', 'coordinating_officer'];
+    const lastVals = {};
+    const processedRows = importRows.map(row => {
+      const processed = { ...row };
+      for (const col of ffCols) {
+        if (!processed[col] || processed[col].toString().trim() === '') {
+          if (lastVals[col]) {
+            processed[col] = lastVals[col];
+            processed.is_forward_filled = (processed.is_forward_filled || '') + col + ',';
+          }
+        } else {
+          lastVals[col] = processed[col];
+        }
+      }
+      return processed;
+    });
+    const validCols = db.all('PRAGMA table_info("records_entries")').map(c => c.name)
+      .filter(c => !['id', 'created_at', 'updated_at'].includes(c));
+    let inserted = 0;
+    for (const row of processedRows) {
+      const data = { category: cat, year: y, quarter: q, created_by: req.user.username };
+      for (const [k, v] of Object.entries(row)) {
+        if (validCols.includes(k)) data[k] = v === '' ? null : v;
+      }
+      const cols = Object.keys(data);
+      const vals = cols.map(c => data[c]);
+      db.run(
+        `INSERT INTO records_entries (${cols.map(c => `"${c}"`).join(',')}) VALUES (${cols.map(() => '?').join(',')})`,
+        vals
+      );
+      inserted++;
+    }
+    db.run(
+      "INSERT OR IGNORE INTO records_years (category, year, created_by) VALUES (?, ?, ?)",
+      [cat, y, req.user.username]
+    );
+    saveToDisk();
+    logActivity(req, "bulk_import_records", cat, `${y} Q${q}: ${inserted} entries`);
+    res.json({ ok: true, inserted });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** Records analytics — aggregated data across all categories */
+app.get("/api/records/analytics", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const yearFilter = req.query.year ? parseInt(req.query.year) : null;
+    const sectorFilter = req.query.sector || null;
+    let whereClause = [];
+    let params = [];
+    if (yearFilter) { whereClause.push("year = ?"); params.push(yearFilter); }
+    if (sectorFilter) { whereClause.push("sector = ?"); params.push(sectorFilter); }
+    const where = whereClause.length > 0 ? "WHERE " + whereClause.join(" AND ") : "";
+    // Category totals
+    const catTotals = db.all(
+      `SELECT category, COUNT(*) as cnt FROM records_entries ${where} GROUP BY category`,
+      params
+    );
+    // Status distribution
+    const statusDist = db.all(
+      `SELECT status, COUNT(*) as cnt FROM records_entries ${where} GROUP BY status`,
+      params
+    );
+    // Sector distribution
+    const sectorDist = db.all(
+      `SELECT sector, COUNT(*) as cnt FROM records_entries ${where} GROUP BY sector ORDER BY cnt DESC LIMIT 15`,
+      params
+    );
+    // Revenue by MMDA
+    const revByMmda = db.all(
+      `SELECT mmda, SUM(COALESCE(processing_fee,0)) as proc_fees, SUM(COALESCE(permit_fee,0)) as perm_fees, SUM(COALESCE(total_amount,0)) as total
+       FROM records_entries ${where} GROUP BY mmda HAVING mmda IS NOT NULL AND mmda != '' ORDER BY total DESC LIMIT 15`,
+      params
+    );
+    // Quarterly volume
+    const quarterlyVol = db.all(
+      `SELECT year, quarter, category, COUNT(*) as cnt FROM records_entries ${where} GROUP BY year, quarter, category ORDER BY year, quarter`,
+      params
+    );
+    // All years for filters
+    const years = db.all("SELECT DISTINCT year FROM records_entries ORDER BY year DESC");
+    const sectors = db.all("SELECT DISTINCT sector FROM records_entries WHERE sector IS NOT NULL AND sector != '' ORDER BY sector");
+    // Funnel: received → permitted
+    const funnelReceived = db.get(
+      `SELECT COUNT(*) as cnt FROM records_entries WHERE category = 'applications_received' ${yearFilter ? 'AND year = ?' : ''}`,
+      yearFilter ? [yearFilter] : []
+    );
+    const funnelPermitted = db.get(
+      `SELECT COUNT(*) as cnt FROM records_entries WHERE category = 'permitted_applications' ${yearFilter ? 'AND year = ?' : ''}`,
+      yearFilter ? [yearFilter] : []
+    );
+    res.json({
+      categoryTotals: catTotals,
+      statusDistribution: statusDist,
+      sectorDistribution: sectorDist,
+      revenueByMmda: revByMmda,
+      quarterlyVolume: quarterlyVol,
+      funnel: { received: funnelReceived?.cnt || 0, permitted: funnelPermitted?.cnt || 0 },
+      years: years.map(y => y.year),
+      sectors: sectors.map(s => s.sector)
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
@@ -5672,6 +5988,8 @@ async function start() {
       "scanlog",
       "permitfilter",
       "enrichment",
+      "records",
+      "recordsAnalytics",
     ];
     /* Seed every default page for every non-admin user.
        INSERT OR IGNORE keeps existing rows untouched. */

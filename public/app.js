@@ -32,8 +32,23 @@ const state = {
   permissions: null,
   featurePerms: null, // { role, features }
   activityUserFilter: null,
+  // Records module
+  recCategory: null,
+  recYear: null,
+  recQuarter: null,
+  recExpandedNodes: {},
+  recSelectedEntryId: null,
+  recInspectorMode: 'detail', // 'detail' | 'add' | 'edit'
+  recSearchTerm: '',
 };
 const FORM_SECTIONS = {};
+const REC_CATEGORIES = [
+  { key: 'applications_received', label: 'Applications Received', icon: '📥' },
+  { key: 'permitted_applications', label: 'Permitted Applications', icon: '✅' },
+  { key: 'monitoring_records', label: 'Monitoring Records', icon: '📊' },
+];
+const REC_CATEGORY_LABELS = { applications_received: 'Applications Received', permitted_applications: 'Permitted Applications', monitoring_records: 'Monitoring Records' };
+const REC_QUARTER_LABELS = { 1: '1st Quarter', 2: '2nd Quarter', 3: '3rd Quarter', 4: '4th Quarter' };
 let searchTimer = null;
 let sidebarSearchTimer = null;
 let activitySearchTimer = null;
@@ -816,6 +831,8 @@ function switchView(view, context) {
         "reports",
         "scanlog",
         "permitfilter",
+        "records",
+        "recordsAnalytics",
       ].find((p) => featureCan("page", p));
       if (firstAllowed && firstAllowed !== view) {
         switchView(firstAllowed);
@@ -851,6 +868,8 @@ function switchView(view, context) {
     scanlog: "SCAN LOG",
     permitfilter: "PERMIT FILTER",
     enrichment: "DATA ENRICHMENT",
+    records: "RECORDS EXPLORER",
+    recordsAnalytics: "RECORDS ANALYTICS",
     activity: "ACTIVITY LOG",
     users: "USERS",
     settings: "SETTINGS",
@@ -879,6 +898,8 @@ function switchView(view, context) {
     scanlog: renderScanLogView,
     permitfilter: renderPermitFilterView,
     enrichment: renderEnrichmentView,
+    records: renderRecordsView,
+    recordsAnalytics: renderRecordsAnalyticsView,
     activity: renderActivityView,
     users: renderUsersView,
     settings: renderSettingsView,
@@ -1716,7 +1737,12 @@ async function loadTableData() {
         html += '<div class="data-card-fields">';
         fields.forEach((f) => {
           if (row[f] !== null && row[f] !== undefined && row[f] !== "") {
-            const fLabel = table === "PERMIT" ? getPermitLabel(f) : table === "tbl_keyword" ? getKeywordLabel(f) : humanize(f);
+            const fLabel =
+              table === "PERMIT"
+                ? getPermitLabel(f)
+                : table === "tbl_keyword"
+                  ? getKeywordLabel(f)
+                  : humanize(f);
             html += `<div class="data-card-field"><span class="field-label">${fLabel}</span><span class="field-value">${formatCellValue(row[f], f)}</span></div>`;
           }
         });
@@ -1872,9 +1898,11 @@ const PERMIT_FIELD_LABELS = {
   Compliance: "Compliance",
   ComplianceDate: "Compliance Date",
   SubmissionOfAnnualEnvironmentalReport: "Annual Environmental Report",
-  SubmissionOfQuartelyEnvironmentalMonitoringReport: "Quarterly Monitoring Report",
+  SubmissionOfQuartelyEnvironmentalMonitoringReport:
+    "Quarterly Monitoring Report",
   DueDateForReporting: "Due Date for Reporting",
-  DateCompanyRequiresToSubmitReviceReport: "Date Company Requires to Submit Report",
+  DateCompanyRequiresToSubmitReviceReport:
+    "Date Company Requires to Submit Report",
   ReportingDays: "Reporting Days",
   DaysAfterReporting: "Days After Reporting",
   DateEnforcementLetterIssued: "Date Enforcement Letter Issued",
@@ -1988,28 +2016,40 @@ async function showRecordModal(table, id) {
 function showPermitRecordModal(row, id) {
   const v = (f) => {
     const val = row[f];
-    return val != null && val !== "" ? escHtml(String(val)) : '<span class="pm-empty">—</span>';
+    return val != null && val !== ""
+      ? escHtml(String(val))
+      : '<span class="pm-empty">—</span>';
   };
   const fv = (f) => {
     const val = row[f];
-    return val != null && val !== "" ? formatCellValue(val, f) : '<span class="pm-empty">—</span>';
+    return val != null && val !== ""
+      ? formatCellValue(val, f)
+      : '<span class="pm-empty">—</span>';
   };
 
   // Status badge
   const status = row.ApplicationStatus || "";
-  const statusClass = status.toLowerCase().includes("issued") ? "pm-badge-green"
-    : status.toLowerCase().includes("denied") || status.toLowerCase().includes("closed") ? "pm-badge-red"
-    : status.toLowerCase().includes("review") || status.toLowerCase().includes("required") ? "pm-badge-amber"
-    : "pm-badge-blue";
+  const statusClass = status.toLowerCase().includes("issued")
+    ? "pm-badge-green"
+    : status.toLowerCase().includes("denied") ||
+        status.toLowerCase().includes("closed")
+      ? "pm-badge-red"
+      : status.toLowerCase().includes("review") ||
+          status.toLowerCase().includes("required")
+        ? "pm-badge-amber"
+        : "pm-badge-blue";
 
-  const companyName = row.RegisteredNameOfUndertaking || "Unnamed Establishment";
+  const companyName =
+    row.RegisteredNameOfUndertaking || "Unnamed Establishment";
   const sector = row.ClassificationOfUndertaking || "";
   const permitNo = row.PermitNumber || "";
   const screening = row.Screening || (row.Screening_Date ? "Done" : "Not Done");
 
   let modal = document.createElement("div");
   modal.className = "modal-overlay";
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.remove();
+  };
 
   // Store row data on the modal for section editing
   modal._pmRow = row;
@@ -2234,30 +2274,41 @@ function togglePmDotsMenu(btn) {
   const dd = btn.nextElementSibling;
   const wasOpen = dd.classList.contains("open");
   // Close any open menus first
-  document.querySelectorAll(".pm-dots-dropdown.open").forEach(d => d.classList.remove("open"));
+  document
+    .querySelectorAll(".pm-dots-dropdown.open")
+    .forEach((d) => d.classList.remove("open"));
   if (!wasOpen) dd.classList.add("open");
 }
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".pm-dots-menu")) {
-    document.querySelectorAll(".pm-dots-dropdown.open").forEach(d => d.classList.remove("open"));
+    document
+      .querySelectorAll(".pm-dots-dropdown.open")
+      .forEach((d) => d.classList.remove("open"));
   }
 });
 
 // ── Export single permit record ──────────────────────────────
 async function exportSinglePermit(id) {
-  document.querySelectorAll(".pm-dots-dropdown.open").forEach(d => d.classList.remove("open"));
+  document
+    .querySelectorAll(".pm-dots-dropdown.open")
+    .forEach((d) => d.classList.remove("open"));
   showProgressBar();
   try {
     const res = await fetch("/api/permit-export", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + state.token },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + state.token,
+      },
       body: JSON.stringify({ ids: [id] }),
     });
     if (!res.ok) throw new Error("Export failed");
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `Permit_${id}.xlsx`; a.click();
+    a.href = url;
+    a.download = `Permit_${id}.xlsx`;
+    a.click();
     URL.revokeObjectURL(url);
     toast("Record exported", "success");
   } catch (err) {
@@ -2272,7 +2323,7 @@ function showPmSectionMenu(e, card) {
   e.preventDefault();
   e.stopPropagation();
   // Remove any existing context menus
-  document.querySelectorAll(".pm-ctx-menu").forEach(m => m.remove());
+  document.querySelectorAll(".pm-ctx-menu").forEach((m) => m.remove());
 
   if (!userCan("can_edit", "PERMIT")) return;
   // Don't show if already in edit mode
@@ -2288,8 +2339,10 @@ function showPmSectionMenu(e, card) {
 
   // Position adjustment if off-screen
   const rect = menu.getBoundingClientRect();
-  if (rect.right > window.innerWidth) menu.style.left = (e.clientX - rect.width) + "px";
-  if (rect.bottom > window.innerHeight) menu.style.top = (e.clientY - rect.height) + "px";
+  if (rect.right > window.innerWidth)
+    menu.style.left = e.clientX - rect.width + "px";
+  if (rect.bottom > window.innerHeight)
+    menu.style.top = e.clientY - rect.height + "px";
 
   // Close on click outside
   setTimeout(() => {
@@ -2336,11 +2389,18 @@ async function startPmSectionEdit(menuItem) {
   const originalHTML = contentEl.innerHTML;
 
   let formHtml = '<div class="pm-edit-fields">';
-  fieldNames.forEach(f => {
+  fieldNames.forEach((f) => {
     const val = row[f] ?? "";
     if (section === "application" && f === "Screening") {
-      formHtml += renderPermitFormField(f, val || "Not Done", fieldOptions, null, 'onchange="toggleScreeningDate(this)"', table);
-      const showDate = (val === "Done" || row.Screening_Date);
+      formHtml += renderPermitFormField(
+        f,
+        val || "Not Done",
+        fieldOptions,
+        null,
+        'onchange="toggleScreeningDate(this)"',
+        table,
+      );
+      const showDate = val === "Done" || row.Screening_Date;
       formHtml += `<div id="screening-date-group" style="${showDate ? "" : "display:none"}">${renderPermitFormField("Screening_Date", row.Screening_Date || "", fieldOptions, null, "", table)}</div>`;
     } else if (section === "application" && f === "Screening_Date") {
       // already rendered above
@@ -2348,7 +2408,7 @@ async function startPmSectionEdit(menuItem) {
       formHtml += renderPermitFormField(f, val, fieldOptions, null, "", table);
     }
   });
-  formHtml += '</div>';
+  formHtml += "</div>";
   formHtml += `<div class="pm-edit-actions">
     <button class="btn btn-primary btn-sm" onclick="savePmSectionEdit(this)">💾 Save</button>
     <button class="btn btn-sm" onclick="cancelPmSectionEdit(this)">Cancel</button>
@@ -2368,7 +2428,7 @@ async function savePmSectionEdit(btn) {
   const fieldNames = (card.dataset.pmFields || "").split(",").filter(Boolean);
 
   const data = {};
-  card.querySelectorAll("[data-col]").forEach(el => {
+  card.querySelectorAll("[data-col]").forEach((el) => {
     data[el.dataset.col] = el.value;
   });
 
@@ -2422,7 +2482,8 @@ function enableDocumentsEditMode(card, table, id, row) {
   if (!contentEl.querySelector(".pm-docs-done-btn")) {
     const doneDiv = document.createElement("div");
     doneDiv.className = "pm-edit-actions pm-docs-done-btn";
-    doneDiv.innerHTML = '<button class="btn btn-sm" onclick="disableDocumentsEditMode(this)">✅ Done</button>';
+    doneDiv.innerHTML =
+      '<button class="btn btn-sm" onclick="disableDocumentsEditMode(this)">✅ Done</button>';
     contentEl.appendChild(doneDiv);
   }
 }
@@ -2453,33 +2514,37 @@ async function loadUnifiedDocumentsReadOnly(table, id, row) {
       loadDigitizedData(table, id, row),
     ]);
 
-    const totalCount = attachments.length + (digiResult ? digiResult.links.length : 0);
+    const totalCount =
+      attachments.length + (digiResult ? digiResult.links.length : 0);
     if (countEl) countEl.textContent = `(${totalCount})`;
 
     let html = "";
 
     // Attachments (read-only: preview + download via right-click)
     if (attachments.length > 0) {
-      html += '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:6px">📎 Uploaded Files</div>';
+      html +=
+        '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:6px">📎 Uploaded Files</div>';
       html += '<div class="attachment-list">';
-      attachments.forEach(a => {
+      attachments.forEach((a) => {
         html += renderAttachmentItemHTML(a, table, id, true);
       });
-      html += '</div></div>';
+      html += "</div></div>";
     }
 
     // Linked digitized files (read-only)
     if (digiResult && digiResult.links.length > 0) {
-      html += '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:6px">🗂️ Linked Digitized Files</div>';
+      html +=
+        '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:6px">🗂️ Linked Digitized Files</div>';
       html += '<div class="attachment-list">';
-      digiResult.links.forEach(link => {
+      digiResult.links.forEach((link) => {
         html += renderDigiLinkItemHTML(link, table, id, true);
       });
-      html += '</div></div>';
+      html += "</div></div>";
     }
 
     if (totalCount === 0) {
-      html = '<div style="padding:8px 0;color:var(--text-muted);font-size:12px;font-style:italic">No documents attached. Right-click to add files.</div>';
+      html =
+        '<div style="padding:8px 0;color:var(--text-muted);font-size:12px;font-style:italic">No documents attached. Right-click to add files.</div>';
     }
 
     container.innerHTML = html;
@@ -2513,11 +2578,15 @@ function getKeywordLabel(field) {
 function showKeywordRecordModal(row, id) {
   const v = (f) => {
     const val = row[f];
-    return val != null && val !== "" ? escHtml(String(val)) : '<span class="pm-empty">—</span>';
+    return val != null && val !== ""
+      ? escHtml(String(val))
+      : '<span class="pm-empty">—</span>';
   };
   const fv = (f) => {
     const val = row[f];
-    return val != null && val !== "" ? formatCellValue(val, f) : '<span class="pm-empty">—</span>';
+    return val != null && val !== ""
+      ? formatCellValue(val, f)
+      : '<span class="pm-empty">—</span>';
   };
 
   const docName = row.NameOFDocument || "Unnamed Document";
@@ -2526,7 +2595,9 @@ function showKeywordRecordModal(row, id) {
 
   let modal = document.createElement("div");
   modal.className = "modal-overlay";
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.remove();
+  };
 
   modal._pmRow = row;
   modal._pmId = id;
@@ -2646,10 +2717,10 @@ async function loadUnifiedDocuments(table, id, row) {
       html +=
         '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:8px">📎 Uploaded Attachments</div>';
       html += '<div class="attachment-list">';
-      attachments.forEach(a => {
+      attachments.forEach((a) => {
         html += renderAttachmentItemHTML(a, table, id, false);
       });
-      html += '</div></div>';
+      html += "</div></div>";
     }
 
     // ── Linked Digitized Documents ──
@@ -2788,19 +2859,21 @@ async function loadDigitizedData(table, recordId, row) {
 
 /** Build HTML for a single attachment item with thumbnail + right-click */
 function renderAttachmentItemHTML(a, table, recordId, readOnly) {
-  const sizeStr = a.file_size > 1048576
-    ? (a.file_size / 1048576).toFixed(1) + " MB"
-    : (a.file_size / 1024).toFixed(0) + " KB";
+  const sizeStr =
+    a.file_size > 1048576
+      ? (a.file_size / 1048576).toFixed(1) + " MB"
+      : (a.file_size / 1024).toFixed(0) + " KB";
   const isImage = /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(a.original_name);
   const isPdf = /\.pdf$/i.test(a.original_name);
   const dateStr = a.created_at ? formatDate(a.created_at) : "";
   const uploaderStr = a.uploaded_by ? escHtml(a.uploaded_by) : "";
   const meta = [uploaderStr, dateStr, sizeStr].filter(Boolean).join(" · ");
-  const canDelete = !readOnly && (state.user?.role === "admin" || userCan("can_edit", table));
+  const canDelete =
+    !readOnly && (state.user?.role === "admin" || userCan("can_edit", table));
 
-  return `<div class="att-item-card" oncontextmenu="showAttContextMenu(event,${a.id},'${escHtml(a.original_name)}','${table}',${recordId},${isImage||isPdf},${canDelete},'attachment')" ondblclick="previewAttachment(${a.id},'${escHtml(a.original_name)}')">
-    <div class="att-thumb" data-att-id="${a.id}" data-filename="${escHtml(a.original_name)}" data-type="${isPdf ? 'pdf' : isImage ? 'image' : 'other'}">
-      <span class="att-thumb-icon">${isPdf ? '📕' : isImage ? '🖼️' : '📄'}</span>
+  return `<div class="att-item-card" oncontextmenu="showAttContextMenu(event,${a.id},'${escHtml(a.original_name)}','${table}',${recordId},${isImage || isPdf},${canDelete},'attachment')" ondblclick="previewAttachment(${a.id},'${escHtml(a.original_name)}')">
+    <div class="att-thumb" data-att-id="${a.id}" data-filename="${escHtml(a.original_name)}" data-type="${isPdf ? "pdf" : isImage ? "image" : "other"}">
+      <span class="att-thumb-icon">${isPdf ? "📕" : isImage ? "🖼️" : "📄"}</span>
     </div>
     <div class="att-item-info">
       <div class="att-item-name" title="${escHtml(a.original_name)}">${escHtml(a.original_name)}</div>
@@ -2813,14 +2886,35 @@ function renderAttachmentItemHTML(a, table, recordId, readOnly) {
 function renderDigiLinkItemHTML(link, table, recordId, readOnly) {
   const ext = link.file_name.split(".").pop().toLowerCase();
   const isPdf = ext === "pdf";
-  const isImage = ["jpg","jpeg","png","gif","bmp","tif","tiff","webp"].includes(ext);
-  const icon = isPdf ? "📕" : isImage ? "🖼️" : ["doc","docx"].includes(ext) ? "📝" : ["xls","xlsx"].includes(ext) ? "📊" : "📄";
-  const canPreview = isPdf || ["jpg","jpeg","png","gif","bmp","webp"].includes(ext);
-  const canUnlink = !readOnly && (state.user?.role === "admin" || userCan("can_edit", table));
-  const meta = [escHtml(link.linked_by || ""), formatDate(link.created_at)].filter(Boolean).join(" · ");
+  const isImage = [
+    "jpg",
+    "jpeg",
+    "png",
+    "gif",
+    "bmp",
+    "tif",
+    "tiff",
+    "webp",
+  ].includes(ext);
+  const icon = isPdf
+    ? "📕"
+    : isImage
+      ? "🖼️"
+      : ["doc", "docx"].includes(ext)
+        ? "📝"
+        : ["xls", "xlsx"].includes(ext)
+          ? "📊"
+          : "📄";
+  const canPreview =
+    isPdf || ["jpg", "jpeg", "png", "gif", "bmp", "webp"].includes(ext);
+  const canUnlink =
+    !readOnly && (state.user?.role === "admin" || userCan("can_edit", table));
+  const meta = [escHtml(link.linked_by || ""), formatDate(link.created_at)]
+    .filter(Boolean)
+    .join(" · ");
 
-  return `<div class="att-item-card" oncontextmenu="showAttContextMenu(event,${link.id},'${escHtml(link.file_name)}','${table}',${recordId},${canPreview},${canUnlink},'digi','${escHtml(link.relative_path)}')" ondblclick="${canPreview ? `previewDigitizedFile('${escHtml(link.relative_path)}','${escHtml(link.file_name)}')` : ''}">
-    <div class="att-thumb" data-type="${isPdf ? 'pdf' : isImage ? 'image' : 'other'}">
+  return `<div class="att-item-card" oncontextmenu="showAttContextMenu(event,${link.id},'${escHtml(link.file_name)}','${table}',${recordId},${canPreview},${canUnlink},'digi','${escHtml(link.relative_path)}')" ondblclick="${canPreview ? `previewDigitizedFile('${escHtml(link.relative_path)}','${escHtml(link.file_name)}')` : ""}">
+    <div class="att-thumb" data-type="${isPdf ? "pdf" : isImage ? "image" : "other"}">
       <span class="att-thumb-icon">${icon}</span>
     </div>
     <div class="att-item-info">
@@ -2833,39 +2927,52 @@ function renderDigiLinkItemHTML(link, table, recordId, readOnly) {
 /** Load thumbnail previews for PDFs and images after DOM is ready */
 function loadAttachmentThumbnails(container) {
   if (!container) return;
-  container.querySelectorAll('.att-thumb[data-att-id]').forEach(el => {
+  container.querySelectorAll(".att-thumb[data-att-id]").forEach((el) => {
     const id = el.dataset.attId;
     const type = el.dataset.type;
-    if (type === 'image') {
-      fetch(`/api/attachments/preview/${id}`, { headers: { Authorization: "Bearer " + state.token } })
-        .then(r => { if (!r.ok) throw new Error(); return r.blob(); })
-        .then(blob => {
+    if (type === "image") {
+      fetch(`/api/attachments/preview/${id}`, {
+        headers: { Authorization: "Bearer " + state.token },
+      })
+        .then((r) => {
+          if (!r.ok) throw new Error();
+          return r.blob();
+        })
+        .then((blob) => {
           const url = URL.createObjectURL(blob);
           el.innerHTML = `<img src="${url}" class="att-thumb-img" alt="" onload="URL.revokeObjectURL(this.src)">`;
-        }).catch(() => {});
-    } else if (type === 'pdf') {
-      fetch(`/api/attachments/preview/${id}`, { headers: { Authorization: "Bearer " + state.token } })
-        .then(r => { if (!r.ok) throw new Error(); return r.blob(); })
-        .then(blob => {
+        })
+        .catch(() => {});
+    } else if (type === "pdf") {
+      fetch(`/api/attachments/preview/${id}`, {
+        headers: { Authorization: "Bearer " + state.token },
+      })
+        .then((r) => {
+          if (!r.ok) throw new Error();
+          return r.blob();
+        })
+        .then((blob) => {
           const url = URL.createObjectURL(blob);
           renderPdfThumbnail(url, el);
-        }).catch(() => {});
+        })
+        .catch(() => {});
     }
   });
 }
 
 /** Render a PDF first-page thumbnail into the given container element */
 function renderPdfThumbnail(blobUrl, container) {
-  const canvas = document.createElement('canvas');
-  canvas.className = 'att-thumb-canvas';
-  const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'position:absolute;width:0;height:0;border:none;visibility:hidden';
+  const canvas = document.createElement("canvas");
+  canvas.className = "att-thumb-canvas";
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText =
+    "position:absolute;width:0;height:0;border:none;visibility:hidden";
   iframe.src = blobUrl;
   // Fall back to showing PDF icon if canvas rendering not available
   // Use a simple approach: just show the iframe thumbnail
-  container.innerHTML = '';
-  const img = document.createElement('div');
-  img.className = 'att-thumb-pdf-frame';
+  container.innerHTML = "";
+  const img = document.createElement("div");
+  img.className = "att-thumb-pdf-frame";
   img.innerHTML = `<iframe src="${blobUrl}#page=1&view=FitH" class="att-thumb-pdf-iframe" scrolling="no" tabindex="-1"></iframe>`;
   container.appendChild(img);
   // Clean up blob URL when the parent is removed
@@ -2879,37 +2986,47 @@ function renderPdfThumbnail(blobUrl, container) {
 }
 
 /** Show right-click context menu for an attachment */
-function showAttContextMenu(event, id, filename, table, recordId, canPreview, canModify, kind, relPath) {
+function showAttContextMenu(
+  event,
+  id,
+  filename,
+  table,
+  recordId,
+  canPreview,
+  canModify,
+  kind,
+  relPath,
+) {
   event.preventDefault();
   event.stopPropagation();
   // Remove any existing context menu
-  document.querySelectorAll('.att-ctx-menu').forEach(m => m.remove());
+  document.querySelectorAll(".att-ctx-menu").forEach((m) => m.remove());
 
-  const menu = document.createElement('div');
-  menu.className = 'att-ctx-menu';
+  const menu = document.createElement("div");
+  menu.className = "att-ctx-menu";
 
-  let items = '';
+  let items = "";
   if (canPreview) {
-    if (kind === 'digi') {
-      items += `<div class="att-ctx-item" onclick="previewDigitizedFile('${escHtml(relPath || '')}','${escHtml(filename)}');this.closest('.att-ctx-menu').remove()">👁️ Preview</div>`;
+    if (kind === "digi") {
+      items += `<div class="att-ctx-item" onclick="previewDigitizedFile('${escHtml(relPath || "")}','${escHtml(filename)}');this.closest('.att-ctx-menu').remove()">👁️ Preview</div>`;
     } else {
       items += `<div class="att-ctx-item" onclick="previewAttachment(${id},'${escHtml(filename)}');this.closest('.att-ctx-menu').remove()">👁️ Preview</div>`;
     }
   }
-  if (kind === 'digi') {
-    items += `<div class="att-ctx-item" onclick="downloadDigitizedFile('${escHtml(relPath || '')}');this.closest('.att-ctx-menu').remove()">⬇️ Download</div>`;
+  if (kind === "digi") {
+    items += `<div class="att-ctx-item" onclick="downloadDigitizedFile('${escHtml(relPath || "")}');this.closest('.att-ctx-menu').remove()">⬇️ Download</div>`;
   } else {
     items += `<div class="att-ctx-item" onclick="downloadAttachment(${id});this.closest('.att-ctx-menu').remove()">⬇️ Download</div>`;
   }
-  if (canPreview && kind !== 'digi') {
+  if (canPreview && kind !== "digi") {
     items += `<div class="att-ctx-item" onclick="openAttachmentNewTab(${id});this.closest('.att-ctx-menu').remove()">🔗 Open in New Tab</div>`;
   }
-  if (kind !== 'digi') {
+  if (kind !== "digi") {
     items += `<div class="att-ctx-item" onclick="copyAttachmentInfo(${id},'${escHtml(filename)}');this.closest('.att-ctx-menu').remove()">📋 Copy File Name</div>`;
   }
   if (canModify) {
     items += '<div class="att-ctx-sep"></div>';
-    if (kind === 'digi') {
+    if (kind === "digi") {
       items += `<div class="att-ctx-item att-ctx-danger" onclick="unlinkDigitizedFile(${id},'${table}',${recordId});this.closest('.att-ctx-menu').remove()">✕ Remove Link</div>`;
     } else {
       items += `<div class="att-ctx-item att-ctx-danger" onclick="deleteAttachment(${id},'${table}',${recordId});this.closest('.att-ctx-menu').remove()">🗑️ Delete File</div>`;
@@ -2921,39 +3038,53 @@ function showAttContextMenu(event, id, filename, table, recordId, canPreview, ca
 
   // Position near cursor
   const menuRect = menu.getBoundingClientRect();
-  let x = event.clientX, y = event.clientY;
-  if (x + menuRect.width > window.innerWidth) x = window.innerWidth - menuRect.width - 8;
-  if (y + menuRect.height > window.innerHeight) y = window.innerHeight - menuRect.height - 8;
-  menu.style.left = x + 'px';
-  menu.style.top = y + 'px';
+  let x = event.clientX,
+    y = event.clientY;
+  if (x + menuRect.width > window.innerWidth)
+    x = window.innerWidth - menuRect.width - 8;
+  if (y + menuRect.height > window.innerHeight)
+    y = window.innerHeight - menuRect.height - 8;
+  menu.style.left = x + "px";
+  menu.style.top = y + "px";
 
   // Close on click outside
   const closeHandler = (e) => {
-    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeHandler, true); }
+    if (!menu.contains(e.target)) {
+      menu.remove();
+      document.removeEventListener("click", closeHandler, true);
+    }
   };
-  setTimeout(() => document.addEventListener('click', closeHandler, true), 0);
+  setTimeout(() => document.addEventListener("click", closeHandler, true), 0);
 }
 
 /** Open attachment in a new browser tab */
 function openAttachmentNewTab(id) {
-  fetch(`/api/attachments/preview/${id}`, { headers: { Authorization: "Bearer " + state.token } })
-    .then(r => { if (!r.ok) throw new Error("Failed"); return r.blob(); })
-    .then(blob => {
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
+  fetch(`/api/attachments/preview/${id}`, {
+    headers: { Authorization: "Bearer " + state.token },
+  })
+    .then((r) => {
+      if (!r.ok) throw new Error("Failed");
+      return r.blob();
     })
-    .catch(err => toast("Could not open file: " + err.message, "error"));
+    .then((blob) => {
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+    })
+    .catch((err) => toast("Could not open file: " + err.message, "error"));
 }
 
 /** Copy attachment filename to clipboard */
 function copyAttachmentInfo(id, filename) {
-  navigator.clipboard.writeText(filename).then(() => toast("File name copied", "success")).catch(() => toast("Copy failed", "error"));
+  navigator.clipboard
+    .writeText(filename)
+    .then(() => toast("File name copied", "success"))
+    .catch(() => toast("Copy failed", "error"));
 }
 
 /** Render just the attachment list items (no dropzone) — legacy wrapper */
 function renderAttachmentList(table, recordId, attachments) {
   let html = '<div class="attachment-list">';
-  attachments.forEach(a => {
+  attachments.forEach((a) => {
     html += renderAttachmentItemHTML(a, table, recordId, false);
   });
   html += "</div>";
@@ -3173,7 +3304,8 @@ async function showNewRecordModal(table) {
 
     if (table === "PERMIT") {
       // ── PERMIT-specific new record modal ──
-      const rf = (f, defVal) => renderPermitFormField(f, defVal || "", fieldOptions);
+      const rf = (f, defVal) =>
+        renderPermitFormField(f, defVal || "", fieldOptions);
       let html = `<div class="modal pm-modal">
       <div class="pm-header">
         <div class="pm-header-left">
@@ -3281,7 +3413,8 @@ async function showEditRecordModal(table, id) {
     if (table === "PERMIT") {
       // ── PERMIT-specific edit modal ──
       const rf = (f) => renderPermitFormField(f, row[f], fieldOptions);
-      const screening = row.Screening || (row.Screening_Date ? "Done" : "Not Done");
+      const screening =
+        row.Screening || (row.Screening_Date ? "Done" : "Not Done");
       const showScreenDate = screening === "Done" || !!row.Screening_Date;
       let html = `<div class="modal pm-modal">
       <div class="pm-header">
@@ -3357,17 +3490,33 @@ async function showEditRecordModal(table, id) {
 }
 
 // ── PERMIT edit form field renderer ──────────────────────────
-function renderPermitFormField(fieldName, value, fieldOptions, forceId, extraAttrs, table) {
-  const label = table === "tbl_keyword" ? getKeywordLabel(fieldName) : getPermitLabel(fieldName);
+function renderPermitFormField(
+  fieldName,
+  value,
+  fieldOptions,
+  forceId,
+  extraAttrs,
+  table,
+) {
+  const label =
+    table === "tbl_keyword"
+      ? getKeywordLabel(fieldName)
+      : getPermitLabel(fieldName);
   const options = fieldOptions[fieldName];
   const currentVal = value ?? "";
   const id = forceId || `edit-${fieldName}`;
   const extra = extraAttrs || "";
 
   // Autocomplete combo-box for OfficerWorkingOnFile
-  const autocompleteFields = ["OfficerWorkingOnFile", "ApprovedBy", "RequestedBy"];
+  const autocompleteFields = [
+    "OfficerWorkingOnFile",
+    "ApprovedBy",
+    "RequestedBy",
+  ];
   if (autocompleteFields.includes(fieldName) && options && options.length > 0) {
-    const optsJson = JSON.stringify(options).replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+    const optsJson = JSON.stringify(options)
+      .replace(/'/g, "&#39;")
+      .replace(/"/g, "&quot;");
     return `<div class="pm-form-group"><label class="pm-form-label">${label}</label>
       <div class="autocomplete-wrapper">
         <input id="${id}" data-col="${fieldName}" value="${escHtml(String(currentVal))}" placeholder="Type to search…" autocomplete="off"
@@ -3381,10 +3530,19 @@ function renderPermitFormField(fieldName, value, fieldOptions, forceId, extraAtt
     let html = `<div class="pm-form-group"><label class="pm-form-label">${label}</label><select id="${id}" data-col="${fieldName}" class="form-select" ${extra}>`;
     html += `<option value="">— Select —</option>`;
     options.forEach((opt) => {
-      const sel = String(currentVal).trim().toLowerCase() === opt.trim().toLowerCase() ? " selected" : "";
+      const sel =
+        String(currentVal).trim().toLowerCase() === opt.trim().toLowerCase()
+          ? " selected"
+          : "";
       html += `<option value="${escHtml(opt)}"${sel}>${escHtml(opt)}</option>`;
     });
-    if (currentVal && !options.some((o) => o.trim().toLowerCase() === String(currentVal).trim().toLowerCase())) {
+    if (
+      currentVal &&
+      !options.some(
+        (o) =>
+          o.trim().toLowerCase() === String(currentVal).trim().toLowerCase(),
+      )
+    ) {
       html += `<option value="${escHtml(String(currentVal))}" selected>${escHtml(String(currentVal))} (custom)</option>`;
     }
     html += `</select></div>`;
@@ -3398,7 +3556,9 @@ function renderPermitFormField(fieldName, value, fieldOptions, forceId, extraAtt
 
 // ── Screening conditional logic ──────────────────────────────
 function toggleScreeningDate(selectEl) {
-  const group = selectEl.closest(".pm-card").querySelector("#screening-date-group");
+  const group = selectEl
+    .closest(".pm-card")
+    .querySelector("#screening-date-group");
   if (group) {
     group.style.display = selectEl.value === "Done" ? "" : "none";
     if (selectEl.value !== "Done") {
@@ -8596,7 +8756,10 @@ async function renderPermitFilterView() {
     const appStatusII = opts.PERMIT?.ApplicationStatusII || [];
     const statusComments = opts.PERMIT?.StatusOrComments || [];
 
-    const selOpts = (arr) => arr.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join("");
+    const selOpts = (arr) =>
+      arr
+        .map((v) => `<option value="${escHtml(v)}">${escHtml(v)}</option>`)
+        .join("");
 
     let html = `<div class="pf-container">
       <div class="pf-header">
@@ -8742,7 +8905,8 @@ function getPermitFilterValues() {
   return {
     name: document.getElementById("pf-name")?.value?.trim() || "",
     fileNumber: document.getElementById("pf-file-number")?.value?.trim() || "",
-    permitNumber: document.getElementById("pf-permit-number")?.value?.trim() || "",
+    permitNumber:
+      document.getElementById("pf-permit-number")?.value?.trim() || "",
     officer: document.getElementById("pf-officer")?.value?.trim() || "",
     undertaking: document.getElementById("pf-undertaking")?.value || "",
     district: document.getElementById("pf-district")?.value || "",
@@ -8763,13 +8927,25 @@ function getPermitFilterValues() {
 }
 
 const PF_CHIP_LABELS = {
-  name: "Company", fileNumber: "File #", permitNumber: "Permit #", officer: "Officer",
-  undertaking: "Sector", district: "District", jurisdiction: "Jurisdiction",
-  location: "Location", fileLocation: "File Location", permitStatus: "Status",
-  appType: "Type", screening: "Screening", permittedBy: "Permitted By",
-  remarks: "Remarks", statusComments: "Comments",
-  issueDateFrom: "Issue From", issueDateTo: "Issue To",
-  expiryDateFrom: "Expiry From", expiryDateTo: "Expiry To",
+  name: "Company",
+  fileNumber: "File #",
+  permitNumber: "Permit #",
+  officer: "Officer",
+  undertaking: "Sector",
+  district: "District",
+  jurisdiction: "Jurisdiction",
+  location: "Location",
+  fileLocation: "File Location",
+  permitStatus: "Status",
+  appType: "Type",
+  screening: "Screening",
+  permittedBy: "Permitted By",
+  remarks: "Remarks",
+  statusComments: "Comments",
+  issueDateFrom: "Issue From",
+  issueDateTo: "Issue To",
+  expiryDateFrom: "Expiry From",
+  expiryDateTo: "Expiry To",
 };
 
 function renderPermitFilterChips() {
@@ -8777,22 +8953,42 @@ function renderPermitFilterChips() {
   if (!chipsEl) return;
   const filters = getPermitFilterValues();
   const active = Object.entries(filters).filter(([, v]) => v);
-  if (active.length === 0) { chipsEl.style.display = "none"; return; }
+  if (active.length === 0) {
+    chipsEl.style.display = "none";
+    return;
+  }
   chipsEl.style.display = "flex";
-  chipsEl.innerHTML = active.map(([k, v]) =>
-    `<span class="pf-chip">${escHtml(PF_CHIP_LABELS[k] || k)}: <strong>${escHtml(v)}</strong> <button onclick="clearPfField('${k}')" class="pf-chip-x">✕</button></span>`
-  ).join("") + `<button class="pf-chip pf-chip-clear" onclick="clearPermitFilters()">Clear All</button>`;
+  chipsEl.innerHTML =
+    active
+      .map(
+        ([k, v]) =>
+          `<span class="pf-chip">${escHtml(PF_CHIP_LABELS[k] || k)}: <strong>${escHtml(v)}</strong> <button onclick="clearPfField('${k}')" class="pf-chip-x">✕</button></span>`,
+      )
+      .join("") +
+    `<button class="pf-chip pf-chip-clear" onclick="clearPermitFilters()">Clear All</button>`;
 }
 
 function clearPfField(key) {
   const map = {
-    name: "pf-name", fileNumber: "pf-file-number", permitNumber: "pf-permit-number",
-    officer: "pf-officer", undertaking: "pf-undertaking", district: "pf-district",
-    jurisdiction: "pf-jurisdiction", location: "pf-location", fileLocation: "pf-file-location",
-    permitStatus: "pf-status", appType: "pf-app-type", screening: "pf-screening",
-    permittedBy: "pf-permitted-by", remarks: "pf-remarks", statusComments: "pf-status-comments",
-    issueDateFrom: "pf-issue-from", issueDateTo: "pf-issue-to",
-    expiryDateFrom: "pf-expiry-from", expiryDateTo: "pf-expiry-to",
+    name: "pf-name",
+    fileNumber: "pf-file-number",
+    permitNumber: "pf-permit-number",
+    officer: "pf-officer",
+    undertaking: "pf-undertaking",
+    district: "pf-district",
+    jurisdiction: "pf-jurisdiction",
+    location: "pf-location",
+    fileLocation: "pf-file-location",
+    permitStatus: "pf-status",
+    appType: "pf-app-type",
+    screening: "pf-screening",
+    permittedBy: "pf-permitted-by",
+    remarks: "pf-remarks",
+    statusComments: "pf-status-comments",
+    issueDateFrom: "pf-issue-from",
+    issueDateTo: "pf-issue-to",
+    expiryDateFrom: "pf-expiry-from",
+    expiryDateTo: "pf-expiry-to",
   };
   const el = document.getElementById(map[key]);
   if (el) el.value = "";
@@ -8848,7 +9044,14 @@ async function applyPermitFilter() {
     html += "</tr></thead><tbody>";
 
     rows.forEach((r, i) => {
-      const remarkClass = r.Remarks === "Valid" ? "tag-green" : r.Remarks === "Expired" ? "tag-red" : r.Remarks === "Renewed" ? "tag-blue" : "tag-yellow";
+      const remarkClass =
+        r.Remarks === "Valid"
+          ? "tag-green"
+          : r.Remarks === "Expired"
+            ? "tag-red"
+            : r.Remarks === "Renewed"
+              ? "tag-blue"
+              : "tag-yellow";
       html += `<tr>
         <td style="color:var(--text-muted)">${i + 1}</td>
         <td style="font-weight:500;color:var(--text-white)">${escHtml(r.RegisteredNameOfUndertaking || "—")}</td>
@@ -8869,6 +9072,860 @@ async function applyPermitFilter() {
     resultsDiv.innerHTML = html;
   } catch (err) {
     resultsDiv.innerHTML = `<div style="color:var(--red);padding:12px">${err.message}</div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  RECORDS MANAGEMENT MODULE
+// ══════════════════════════════════════════════════════════════
+
+// ── Field definitions for records entries ─────────────────────
+const REC_FIELD_SECTIONS = [
+  { title: 'Identification', fields: [
+    { key: 'company_name', label: 'Company Name', type: 'text', required: true },
+    { key: 'client_id', label: 'Client ID', type: 'text' },
+    { key: 'contact_person', label: 'Contact Person', type: 'text' },
+    { key: 'telephone', label: 'Telephone', type: 'text' },
+    { key: 'email', label: 'Email', type: 'email' },
+  ]},
+  { title: 'Operational Details', fields: [
+    { key: 'sector', label: 'Sector', type: 'suggest' },
+    { key: 'type_of_activity', label: 'Type of Activity', type: 'text' },
+    { key: 'file_number', label: 'File Number', type: 'text' },
+    { key: 'facility_location', label: 'Facility Location', type: 'text' },
+    { key: 'district', label: 'District', type: 'text' },
+    { key: 'mmda', label: 'MMDA', type: 'text' },
+    { key: 'jurisdiction', label: 'Jurisdiction', type: 'text' },
+  ]},
+  { title: 'Geospatial Data', fields: [
+    { key: 'latitude', label: 'Latitude', type: 'text' },
+    { key: 'longitude', label: 'Longitude', type: 'text' },
+  ]},
+  { title: 'Financial Tracking', fields: [
+    { key: 'processing_fee', label: 'Processing Fee', type: 'currency' },
+    { key: 'date_of_processing_fee', label: 'Date of Processing Fee', type: 'date' },
+    { key: 'date_of_payment_processing', label: 'Date of Payment (Processing)', type: 'date' },
+    { key: 'permit_fee', label: 'Permit Fee', type: 'currency' },
+    { key: 'date_of_permit_fee', label: 'Date of Permit Fee', type: 'date' },
+    { key: 'date_of_payment_permit', label: 'Date of Payment (Permit)', type: 'date' },
+    { key: 'invoice_number', label: 'Invoice Number', type: 'text' },
+    { key: 'date_of_invoice', label: 'Date of Invoice', type: 'date' },
+    { key: 'amount_to_pay', label: 'Amount to Pay', type: 'currency' },
+    { key: 'amount_paid', label: 'Amount Paid', type: 'currency' },
+    { key: 'balance', label: 'Balance', type: 'currency' },
+    { key: 'date_of_payment', label: 'Date of Payment', type: 'date' },
+    { key: 'total_amount', label: 'Total Amount', type: 'currency' },
+  ]},
+  { title: 'Permit Details', fields: [
+    { key: 'permit_number', label: 'Permit Number', type: 'text' },
+    { key: 'permit_holder', label: 'Permit Holder', type: 'text' },
+    { key: 'permit_issue_date', label: 'Permit Issue Date', type: 'date' },
+    { key: 'permit_expiry_date', label: 'Permit Expiry Date', type: 'date' },
+    { key: 'permit_renewal_date', label: 'Permit Renewal Date', type: 'date' },
+    { key: 'application_status', label: 'Application Status', type: 'text' },
+  ]},
+  { title: 'Compliance Timeline', fields: [
+    { key: 'date_of_receipt', label: 'Date of Receipt', type: 'date' },
+    { key: 'date_of_screening', label: 'Date of Screening', type: 'date' },
+    { key: 'date_of_draft_receipt', label: 'Date of Draft Receipt', type: 'date' },
+    { key: 'date_of_revised_receipt', label: 'Date of Revised Receipt', type: 'date' },
+    { key: 'date_review_sent', label: 'Date Review Comment Sent', type: 'date' },
+    { key: 'date_of_emp_submission', label: 'Date of EMP Submission', type: 'date' },
+    { key: 'date_of_trc', label: 'Date of TRC', type: 'date' },
+    { key: 'date_sent_head_office', label: 'Date Sent to Head Office', type: 'date' },
+    { key: 'date_received_head_office', label: 'Date Received from Head Office', type: 'date' },
+  ]},
+  { title: 'Monitoring & Compliance', fields: [
+    { key: 'tentative_date', label: 'Tentative Date', type: 'date' },
+    { key: 'group_name', label: 'Group', type: 'text' },
+    { key: 'coordinating_officer', label: 'Coordinating Officer', type: 'text' },
+    { key: 'monitoring_status', label: 'Monitoring Status', type: 'text' },
+    { key: 'compliance_status', label: 'Compliance Status', type: 'text' },
+    { key: 'compliance_date', label: 'Compliance Date', type: 'date' },
+    { key: 'environmental_report', label: 'Environmental Report', type: 'text' },
+    { key: 'due_date_reporting', label: 'Due Date for Reporting', type: 'date' },
+    { key: 'reporting_days', label: 'Reporting Days', type: 'text' },
+  ]},
+  { title: 'Status & Notes', fields: [
+    { key: 'officer_on_file', label: 'Officer Working on File', type: 'text' },
+    { key: 'status', label: 'Status', type: 'status' },
+    { key: 'remarks', label: 'Remarks', type: 'textarea' },
+  ]},
+];
+
+// Master grid columns (the 5 key columns shown in the table)
+const REC_MASTER_COLS = [
+  { key: 'id', label: 'S/N', width: '60px', mono: true },
+  { key: 'company_name', label: 'Company Name', flex: 3 },
+  { key: 'date_of_receipt', label: 'Date', width: '110px' },
+  { key: 'sector', label: 'Sector', flex: 1 },
+  { key: 'status', label: 'Status', width: '120px' },
+];
+
+// ── Records Explorer View ─────────────────────────────────────
+async function renderRecordsView() {
+  const sidebar = document.getElementById('sidebar-content');
+  const tabBar = document.getElementById('tab-bar');
+  tabBar.innerHTML = '<div class="tab-item active">📂 Records Entries</div>';
+  sidebar.innerHTML = '<div class="loading">Loading...</div>';
+  await renderRecordsTreeSidebar();
+  // If we have a selected category/year/quarter, load it
+  if (state.recCategory && state.recYear && state.recQuarter) {
+    loadRecordsWorkspace();
+  } else {
+    const content = document.getElementById('content');
+    content.innerHTML = `<div class="rec-welcome">
+      <div class="rec-welcome-icon">📂</div>
+      <h2>Records Entries</h2>
+      <p>Select a category, year, and quarter from the sidebar explorer to view records.</p>
+      <p style="color:var(--text-muted);font-size:12px;margin-top:8px">Use the tree navigation on the left to browse Applications Received, Permitted Applications, and Monitoring Records.</p>
+    </div>`;
+  }
+}
+
+// ── Tree Sidebar ──────────────────────────────────────────────
+async function renderRecordsTreeSidebar() {
+  const sidebar = document.getElementById('sidebar-content');
+  let html = '<div class="rec-tree">';
+  for (const cat of REC_CATEGORIES) {
+    const expanded = state.recExpandedNodes[cat.key];
+    html += `<div class="rec-tree-node rec-tree-root" onclick="toggleRecTreeNode('${cat.key}')">
+      <span class="rec-tree-arrow">${expanded ? '▾' : '▸'}</span>
+      <span class="rec-tree-icon">${cat.icon}</span>
+      <span class="rec-tree-label">${cat.label}</span>
+    </div>`;
+    if (expanded) {
+      html += `<div class="rec-tree-children" id="rec-tree-children-${cat.key}">
+        <div class="rec-tree-add" onclick="event.stopPropagation();showAddYearModal('${cat.key}')">
+          <span class="rec-tree-add-icon">＋</span>
+          <span>Add New Year</span>
+        </div>
+        <div class="loading" style="padding:4px 16px;font-size:11px">Loading years...</div>
+      </div>`;
+    }
+  }
+  html += '</div>';
+  sidebar.innerHTML = html;
+  // Load years for expanded categories
+  for (const cat of REC_CATEGORIES) {
+    if (state.recExpandedNodes[cat.key]) {
+      loadRecTreeYears(cat.key);
+    }
+  }
+}
+
+async function toggleRecTreeNode(key) {
+  state.recExpandedNodes[key] = !state.recExpandedNodes[key];
+  await renderRecordsTreeSidebar();
+}
+
+async function loadRecTreeYears(catKey) {
+  const container = document.getElementById(`rec-tree-children-${catKey}`);
+  if (!container) return;
+  try {
+    const data = await api(`/api/records/years/${catKey}`);
+    let html = `<div class="rec-tree-add" onclick="event.stopPropagation();showAddYearModal('${catKey}')">
+      <span class="rec-tree-add-icon">＋</span>
+      <span>Add New Year</span>
+    </div>`;
+    if (data.years.length === 0) {
+      html += '<div class="rec-tree-empty">No years yet</div>';
+    }
+    for (const yr of data.years) {
+      const yrKey = `${catKey}_${yr.year}`;
+      const yrExpanded = state.recExpandedNodes[yrKey];
+      const yrCounts = data.counts[yr.year] || {};
+      const totalCount = Object.values(yrCounts).reduce((a, b) => a + b, 0);
+      html += `<div class="rec-tree-node rec-tree-year" onclick="event.stopPropagation();toggleRecTreeNode('${yrKey}')">
+        <span class="rec-tree-arrow">${yrExpanded ? '▾' : '▸'}</span>
+        <span class="rec-tree-icon">📅</span>
+        <span class="rec-tree-label">${yr.year}</span>
+        ${totalCount > 0 ? `<span class="rec-tree-badge">${totalCount}</span>` : ''}
+      </div>`;
+      if (yrExpanded) {
+        html += '<div class="rec-tree-children">';
+        for (let q = 1; q <= 4; q++) {
+          const cnt = yrCounts[q] || 0;
+          const isActive = state.recCategory === catKey && state.recYear === yr.year && state.recQuarter === q;
+          html += `<div class="rec-tree-node rec-tree-quarter${isActive ? ' rec-tree-active' : ''}" onclick="event.stopPropagation();selectRecQuarter('${catKey}',${yr.year},${q})" oncontextmenu="event.preventDefault();event.stopPropagation();showRecQuarterCtx(event,'${catKey}',${yr.year},${q})">
+            <span class="rec-tree-icon" style="font-size:11px">📋</span>
+            <span class="rec-tree-label">${REC_QUARTER_LABELS[q]}</span>
+            ${cnt > 0 ? `<span class="rec-tree-badge">${cnt}</span>` : ''}
+          </div>`;
+        }
+        html += '</div>';
+      }
+    }
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = `<div style="padding:4px 16px;color:var(--red);font-size:11px">${e.message}</div>`;
+  }
+}
+
+function selectRecQuarter(cat, year, quarter) {
+  state.recCategory = cat;
+  state.recYear = year;
+  state.recQuarter = quarter;
+  state.recSelectedEntryId = null;
+  state.recInspectorMode = 'detail';
+  state.recSearchTerm = '';
+  // Update tree active state
+  document.querySelectorAll('.rec-tree-quarter').forEach(el => el.classList.remove('rec-tree-active'));
+  const activeNode = document.querySelector(`.rec-tree-quarter[onclick*="'${cat}',${year},${quarter}"]`);
+  if (activeNode) activeNode.classList.add('rec-tree-active');
+  loadRecordsWorkspace();
+}
+
+// ── Right-click context menu on quarter ───────────────────────
+function showRecQuarterCtx(event, cat, year, quarter) {
+  document.querySelectorAll('.att-ctx-menu').forEach(m => m.remove());
+  const menu = document.createElement('div');
+  menu.className = 'att-ctx-menu';
+  menu.style.left = event.clientX + 'px';
+  menu.style.top = event.clientY + 'px';
+  menu.innerHTML = `
+    <div class="att-ctx-item" onclick="this.parentElement.remove();selectRecQuarter('${cat}',${year},${quarter});setTimeout(()=>recStartAddEntry(),200)">📝 Add New Record</div>
+    <div class="att-ctx-item" onclick="this.parentElement.remove();selectRecQuarter('${cat}',${year},${quarter})">📋 View Records</div>
+  `;
+  document.body.appendChild(menu);
+  setTimeout(() => {
+    const close = (e) => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', close); }};
+    document.addEventListener('click', close);
+  }, 0);
+}
+
+// ── Add Year Modal ────────────────────────────────────────────
+function showAddYearModal(catKey) {
+  const currentYear = new Date().getFullYear();
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `<div class="modal" style="width:400px">
+    <div class="modal-header"><h3 style="margin:0">Add New Year</h3><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+    <div class="modal-body" style="padding:20px">
+      <p style="font-size:13px;color:var(--text-primary);margin-bottom:12px">Add a year to <strong>${REC_CATEGORY_LABELS[catKey]}</strong></p>
+      <input type="number" id="rec-add-year-input" value="${currentYear}" min="2000" max="2100" style="width:100%;padding:10px;font-size:16px;text-align:center;border-radius:8px;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-white)">
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="this.closest('.modal-overlay').remove()">Cancel</button><button class="btn btn-primary" onclick="submitAddYear('${catKey}')">Add Year</button></div>
+  </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('rec-add-year-input').focus();
+}
+
+async function submitAddYear(catKey) {
+  const input = document.getElementById('rec-add-year-input');
+  const year = parseInt(input.value);
+  if (!year || year < 2000 || year > 2100) { showToast('Please enter a valid year (2000-2100)', 'error'); return; }
+  try {
+    await api('/api/records/years', { method: 'POST', body: JSON.stringify({ category: catKey, year }) });
+    document.querySelector('.modal-overlay')?.remove();
+    showToast(`Year ${year} added to ${REC_CATEGORY_LABELS[catKey]}`, 'success');
+    state.recExpandedNodes[catKey] = true;
+    state.recExpandedNodes[`${catKey}_${year}`] = true;
+    await renderRecordsTreeSidebar();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// ── Master-Detail Workspace ───────────────────────────────────
+async function loadRecordsWorkspace() {
+  const content = document.getElementById('content');
+  const tabBar = document.getElementById('tab-bar');
+  const catLabel = REC_CATEGORY_LABELS[state.recCategory] || state.recCategory;
+  const qLabel = REC_QUARTER_LABELS[state.recQuarter] || `Q${state.recQuarter}`;
+  tabBar.innerHTML = `<div class="tab-item active">📂 ${catLabel} — ${state.recYear} ${qLabel}</div>`;
+  content.innerHTML = '<div class="loading">Loading records...</div>';
+  try {
+    const params = state.recSearchTerm ? `?search=${encodeURIComponent(state.recSearchTerm)}` : '';
+    const data = await api(`/api/records/entries/${state.recCategory}/${state.recYear}/${state.recQuarter}${params}`);
+    let html = '';
+    // Breadcrumbs
+    html += `<div class="rec-breadcrumbs">
+      <span class="rec-bc-item" onclick="state.recCategory=null;state.recYear=null;state.recQuarter=null;renderRecordsView()">Records Entries</span>
+      <span class="rec-bc-sep">›</span>
+      <span class="rec-bc-item">${escHtml(catLabel)}</span>
+      <span class="rec-bc-sep">›</span>
+      <span class="rec-bc-item">${state.recYear}</span>
+      <span class="rec-bc-sep">›</span>
+      <span class="rec-bc-current">${qLabel}</span>
+    </div>`;
+    // Toolbar
+    html += `<div class="rec-toolbar">
+      <div class="rec-toolbar-left">
+        <div class="rec-search-box">
+          <span class="search-icon">🔍</span>
+          <input type="search" id="rec-search-input" placeholder="Filter records..." value="${escHtml(state.recSearchTerm)}" oninput="recHandleSearch(this.value)">
+        </div>
+        <span class="rec-result-count">${data.total} record${data.total !== 1 ? 's' : ''}</span>
+      </div>
+      <div class="rec-toolbar-right">
+        <button class="btn btn-sm" onclick="recExportCSV()" title="Export CSV">📥 Export</button>
+        <button class="btn btn-primary btn-sm" onclick="recStartAddEntry()">＋ New Entry</button>
+      </div>
+    </div>`;
+    // Master-Detail container
+    html += '<div class="rec-master-detail">';
+    // Master Grid
+    html += '<div class="rec-master" id="rec-master">';
+    html += '<table class="rec-table"><thead><tr>';
+    for (const col of REC_MASTER_COLS) {
+      const w = col.width ? `width:${col.width}` : `flex:${col.flex || 1}`;
+      html += `<th style="${w}">${col.label}</th>`;
+    }
+    html += '</tr></thead><tbody>';
+    if (data.rows.length === 0) {
+      html += `<tr><td colspan="${REC_MASTER_COLS.length}" class="rec-table-empty">
+        <div class="rec-empty-zone" id="rec-drop-zone">
+          <div class="rec-empty-icon">📋</div>
+          <div class="rec-empty-title">No records yet</div>
+          <div class="rec-empty-sub">Click <strong>＋ New Entry</strong> to add a record, or drag &amp; drop a CSV file here to import.</div>
+        </div>
+      </td></tr>`;
+    } else {
+      data.rows.forEach((row, idx) => {
+        const isSelected = state.recSelectedEntryId === row.id;
+        const isNew = row._isNew;
+        const statusClass = recGetStatusClass(row.status);
+        const ffFields = (row.is_forward_filled || '').split(',').filter(Boolean);
+        html += `<tr class="rec-row${isSelected ? ' rec-row-selected' : ''}${isNew ? ' rec-row-new' : ''}" data-id="${row.id}" onclick="recSelectRow(${row.id})">`;
+        html += `<td class="rec-cell-mono">${idx + 1}</td>`;
+        html += `<td class="rec-cell-name" title="${escHtml(row.company_name || '')}">${escHtml(row.company_name || '—')}</td>`;
+        html += `<td class="rec-cell-date">${escHtml(row.date_of_receipt || '—')}</td>`;
+        html += `<td class="rec-cell-sector" title="${escHtml(row.sector || '')}">${escHtml(row.sector || '—')}</td>`;
+        html += `<td><span class="rec-status-chip ${statusClass}">${escHtml(row.status || 'Pending')}</span></td>`;
+        html += '</tr>';
+      });
+    }
+    html += '</tbody></table></div>';
+    // Inspector Panel
+    html += '<div class="rec-inspector" id="rec-inspector">';
+    html += recRenderInspectorContent(data.rows);
+    html += '</div>';
+    html += '</div>'; // end master-detail
+    content.innerHTML = html;
+    // Setup drag-drop on empty zone
+    const dropZone = document.getElementById('rec-drop-zone');
+    if (dropZone) {
+      dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('rec-drop-active'); });
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('rec-drop-active'));
+      dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('rec-drop-active'); recHandleCSVDrop(e); });
+    }
+  } catch (err) {
+    content.innerHTML = `<div class="empty-state"><div class="empty-title">Error</div><div class="empty-desc">${err.message}</div></div>`;
+  }
+}
+
+function recGetStatusClass(status) {
+  if (!status) return 'rec-status-pending';
+  const s = status.toLowerCase();
+  if (s.includes('permit') && (s.includes('issued') || s.includes('granted'))) return 'rec-status-permitted';
+  if (s.includes('pending') || s.includes('processing')) return 'rec-status-pending';
+  if (s.includes('expired')) return 'rec-status-expired';
+  if (s.includes('renew')) return 'rec-status-renewal';
+  if (s.includes('complete') || s.includes('done') || s.includes('valid')) return 'rec-status-permitted';
+  return 'rec-status-pending';
+}
+
+function recHandleSearch(val) {
+  clearTimeout(searchTimer);
+  state.recSearchTerm = val;
+  searchTimer = setTimeout(() => loadRecordsWorkspace(), 300);
+}
+
+// ── Select Row → Inspector ────────────────────────────────────
+async function recSelectRow(id) {
+  state.recSelectedEntryId = id;
+  state.recInspectorMode = 'detail';
+  // Highlight row
+  document.querySelectorAll('.rec-row').forEach(r => r.classList.toggle('rec-row-selected', parseInt(r.dataset.id) === id));
+  // Load entry details
+  const inspector = document.getElementById('rec-inspector');
+  inspector.innerHTML = '<div class="loading" style="padding:20px">Loading...</div>';
+  try {
+    const entry = await api(`/api/records/entry/${id}`);
+    inspector.innerHTML = recRenderDetailInspector(entry);
+  } catch (e) {
+    inspector.innerHTML = `<div style="padding:16px;color:var(--red)">${e.message}</div>`;
+  }
+}
+
+function recRenderInspectorContent(rows) {
+  if (state.recInspectorMode === 'add') return recRenderAddForm();
+  if (state.recSelectedEntryId) {
+    const entry = rows.find(r => r.id === state.recSelectedEntryId);
+    if (entry) return recRenderDetailInspector(entry);
+  }
+  return `<div class="rec-inspector-empty">
+    <div class="rec-inspector-empty-icon">👈</div>
+    <div class="rec-inspector-empty-text">Select a record from the table to view its details</div>
+  </div>`;
+}
+
+// ── Detail Inspector ──────────────────────────────────────────
+function recRenderDetailInspector(entry) {
+  const ffFields = (entry.is_forward_filled || '').split(',').filter(Boolean);
+  let html = `<div class="rec-insp-header">
+    <div class="rec-insp-title">${escHtml(entry.company_name || 'Record #' + entry.id)}</div>
+    <div class="rec-insp-actions">
+      <button class="btn btn-sm" onclick="recStartEditEntry(${entry.id})" title="Edit">✏️ Edit</button>
+      <button class="btn btn-sm rec-btn-danger" onclick="recDeleteEntry(${entry.id})" title="Delete">🗑️</button>
+    </div>
+  </div>
+  <div class="rec-insp-meta">
+    <span class="rec-status-chip ${recGetStatusClass(entry.status)}">${escHtml(entry.status || 'Pending')}</span>
+    <span style="font-size:11px;color:var(--text-muted)">Created ${escHtml(entry.created_at || '')} by ${escHtml(entry.created_by || 'system')}</span>
+  </div>`;
+  html += '<div class="rec-insp-fields">';
+  for (const section of REC_FIELD_SECTIONS) {
+    const hasData = section.fields.some(f => entry[f.key] !== null && entry[f.key] !== undefined && entry[f.key] !== '');
+    if (!hasData) continue;
+    html += `<div class="rec-insp-section">
+      <div class="rec-insp-section-title">${section.title}</div>`;
+    for (const f of section.fields) {
+      const val = entry[f.key];
+      if (val === null || val === undefined || val === '') continue;
+      const isFF = ffFields.includes(f.key);
+      const displayVal = f.type === 'currency' ? formatGHS(val) : escHtml(String(val));
+      html += `<div class="rec-insp-field">
+        <span class="rec-insp-label">${f.label}</span>
+        <span class="rec-insp-value${isFF ? ' rec-insp-ghost' : ''}${f.type === 'currency' ? ' rec-cell-mono' : ''}">${displayVal}${isFF ? ' <span class="rec-ff-tag">auto-filled</span>' : ''}</span>
+      </div>`;
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function formatGHS(val) {
+  const n = parseFloat(val);
+  if (isNaN(n)) return escHtml(String(val));
+  return 'GHS ' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ── Add Entry Form ────────────────────────────────────────────
+function recStartAddEntry() {
+  state.recInspectorMode = 'add';
+  state.recSelectedEntryId = null;
+  document.querySelectorAll('.rec-row').forEach(r => r.classList.remove('rec-row-selected'));
+  const inspector = document.getElementById('rec-inspector');
+  if (inspector) inspector.innerHTML = recRenderAddForm();
+  // Dim the master grid
+  const master = document.getElementById('rec-master');
+  if (master) master.classList.add('rec-master-dimmed');
+}
+
+function recCancelAdd() {
+  state.recInspectorMode = 'detail';
+  const inspector = document.getElementById('rec-inspector');
+  if (inspector) inspector.innerHTML = `<div class="rec-inspector-empty">
+    <div class="rec-inspector-empty-icon">👈</div>
+    <div class="rec-inspector-empty-text">Select a record from the table to view its details</div>
+  </div>`;
+  const master = document.getElementById('rec-master');
+  if (master) master.classList.remove('rec-master-dimmed');
+}
+
+function recRenderAddForm(editEntry) {
+  const isEdit = !!editEntry;
+  const title = isEdit ? 'Edit Record' : 'New Record';
+  const catLabel = REC_CATEGORY_LABELS[state.recCategory] || '';
+  const qLabel = REC_QUARTER_LABELS[state.recQuarter] || '';
+  let html = `<div class="rec-form-header">
+    <div class="rec-form-title">${title}</div>
+    <div class="rec-form-context">${catLabel} › ${state.recYear} › ${qLabel}</div>
+  </div>
+  <form id="rec-entry-form" class="rec-form" onsubmit="event.preventDefault();recSubmitEntry(${isEdit ? editEntry.id : 'null'})">`;
+  for (const section of REC_FIELD_SECTIONS) {
+    html += `<div class="rec-form-section-title">${section.title}</div>`;
+    for (const f of section.fields) {
+      const val = isEdit ? (editEntry[f.key] || '') : '';
+      const reqMark = f.required ? '<span class="rec-required">*</span>' : '';
+      html += `<div class="rec-form-group">
+        <label class="rec-form-label">${f.label}${reqMark}</label>`;
+      if (f.type === 'textarea') {
+        html += `<textarea name="${f.key}" class="rec-form-input rec-form-textarea" rows="3">${escHtml(String(val))}</textarea>`;
+      } else if (f.type === 'date') {
+        html += `<input type="date" name="${f.key}" class="rec-form-input" value="${escHtml(String(val))}">`;
+      } else if (f.type === 'currency') {
+        html += `<div class="rec-currency-wrap"><span class="rec-currency-prefix">GHS</span><input type="number" step="0.01" name="${f.key}" class="rec-form-input rec-form-currency" value="${val}" oninput="recAutoCalcTotals()"></div>`;
+      } else if (f.type === 'suggest') {
+        html += `<input type="text" name="${f.key}" class="rec-form-input" value="${escHtml(String(val))}" list="rec-suggest-${f.key}" autocomplete="off">
+        <datalist id="rec-suggest-${f.key}"></datalist>`;
+      } else if (f.type === 'status') {
+        html += `<select name="${f.key}" class="rec-form-input">
+          <option value="Pending"${val === 'Pending' ? ' selected' : ''}>Pending</option>
+          <option value="Processing"${val === 'Processing' ? ' selected' : ''}>Processing</option>
+          <option value="Permit Issued"${val === 'Permit Issued' ? ' selected' : ''}>Permit Issued</option>
+          <option value="Expired"${val === 'Expired' ? ' selected' : ''}>Expired</option>
+          <option value="Renewal"${val === 'Renewal' ? ' selected' : ''}>Renewal</option>
+          <option value="Completed"${val === 'Completed' ? ' selected' : ''}>Completed</option>
+        </select>`;
+      } else {
+        html += `<input type="${f.type === 'email' ? 'email' : 'text'}" name="${f.key}" class="rec-form-input" value="${escHtml(String(val))}"${f.required ? ' required' : ''}>`;
+      }
+      html += '</div>';
+    }
+  }
+  html += `<div class="rec-form-actions">
+    <button type="button" class="btn" onclick="recCancelAdd()">Cancel</button>
+    <button type="submit" class="btn btn-primary" id="rec-save-btn">${isEdit ? 'Save Changes' : 'Save Entry'}</button>
+  </div></form>`;
+  // Load sector suggestions
+  setTimeout(() => recLoadSectorSuggestions(), 100);
+  return html;
+}
+
+async function recLoadSectorSuggestions() {
+  try {
+    const data = await api(`/api/records/analytics`);
+    const dl = document.getElementById('rec-suggest-sector');
+    if (dl && data.sectors) {
+      dl.innerHTML = data.sectors.map(s => `<option value="${escHtml(s)}">`).join('');
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function recAutoCalcTotals() {
+  const form = document.getElementById('rec-entry-form');
+  if (!form) return;
+  const pf = parseFloat(form.querySelector('[name="processing_fee"]')?.value) || 0;
+  const pmf = parseFloat(form.querySelector('[name="permit_fee"]')?.value) || 0;
+  const totalInput = form.querySelector('[name="total_amount"]');
+  if (totalInput && !totalInput.dataset.manual) {
+    totalInput.value = (pf + pmf).toFixed(2);
+  }
+  const paid = parseFloat(form.querySelector('[name="amount_paid"]')?.value) || 0;
+  const toPayInput = form.querySelector('[name="amount_to_pay"]');
+  const balInput = form.querySelector('[name="balance"]');
+  if (balInput && !balInput.dataset.manual) {
+    const total = parseFloat(totalInput?.value) || 0;
+    balInput.value = (total - paid).toFixed(2);
+  }
+}
+
+async function recSubmitEntry(editId) {
+  const form = document.getElementById('rec-entry-form');
+  if (!form) return;
+  const formData = new FormData(form);
+  const body = { category: state.recCategory, year: state.recYear, quarter: state.recQuarter };
+  for (const [k, v] of formData.entries()) body[k] = v;
+  const saveBtn = document.getElementById('rec-save-btn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+  try {
+    if (editId) {
+      await api(`/api/records/entry/${editId}`, { method: 'PUT', body: JSON.stringify(body) });
+      showToast('Record updated successfully', 'success');
+    } else {
+      const result = await api('/api/records/entries', { method: 'POST', body: JSON.stringify(body) });
+      showToast(`Record ${result.file_number || '#' + result.id} successfully added to ${state.recYear} Q${state.recQuarter}`, 'success');
+    }
+    state.recInspectorMode = 'detail';
+    const master = document.getElementById('rec-master');
+    if (master) master.classList.remove('rec-master-dimmed');
+    await loadRecordsWorkspace();
+    // Refresh sidebar counts
+    const catKey = state.recCategory;
+    if (state.recExpandedNodes[catKey]) loadRecTreeYears(catKey);
+  } catch (e) {
+    showToast(e.message, 'error');
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = editId ? 'Save Changes' : 'Save Entry'; }
+  }
+}
+
+// ── Edit Entry ────────────────────────────────────────────────
+async function recStartEditEntry(id) {
+  try {
+    const entry = await api(`/api/records/entry/${id}`);
+    state.recInspectorMode = 'edit';
+    const inspector = document.getElementById('rec-inspector');
+    if (inspector) inspector.innerHTML = recRenderAddForm(entry);
+    const master = document.getElementById('rec-master');
+    if (master) master.classList.add('rec-master-dimmed');
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// ── Delete Entry ──────────────────────────────────────────────
+async function recDeleteEntry(id) {
+  if (!confirm('Are you sure you want to delete this record?')) return;
+  try {
+    await api(`/api/records/entry/${id}`, { method: 'DELETE' });
+    showToast('Record deleted', 'success');
+    state.recSelectedEntryId = null;
+    await loadRecordsWorkspace();
+    const catKey = state.recCategory;
+    if (state.recExpandedNodes[catKey]) loadRecTreeYears(catKey);
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// ── CSV Import with Forward-Fill ──────────────────────────────
+async function recHandleCSVDrop(event) {
+  const file = event.dataTransfer?.files?.[0];
+  if (!file) return;
+  if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) {
+    showToast('Please drop a CSV or XLSX file', 'error');
+    return;
+  }
+  showToast('Parsing file...', 'info');
+  try {
+    const text = await file.text();
+    const rows = recParseCSV(text);
+    if (rows.length === 0) { showToast('No data rows found', 'error'); return; }
+    const result = await api(`/api/records/import/${state.recCategory}/${state.recYear}/${state.recQuarter}`, {
+      method: 'POST',
+      body: JSON.stringify({ rows, ffillCols: ['tentative_date', 'group_name', 'coordinating_officer'] })
+    });
+    showToast(`Imported ${result.inserted} records successfully`, 'success');
+    await loadRecordsWorkspace();
+    const catKey = state.recCategory;
+    if (state.recExpandedNodes[catKey]) loadRecTreeYears(catKey);
+  } catch (e) {
+    showToast('Import failed: ' + e.message, 'error');
+  }
+}
+
+function recParseCSV(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_'));
+  const fieldMap = {};
+  // Map common header names to our column names
+  const headerMappings = {
+    'company': 'company_name', 'company_name': 'company_name', 'name_of_company': 'company_name',
+    'sector': 'sector', 'district': 'district', 'location': 'facility_location',
+    'contact': 'contact_person', 'phone': 'telephone', 'email': 'email',
+    'latitude': 'latitude', 'longitude': 'longitude', 'mmda': 'mmda',
+    'processing_fee': 'processing_fee', 'permit_fee': 'permit_fee',
+    'status': 'status', 'remarks': 'remarks', 'file_number': 'file_number',
+    'permit_number': 'permit_number', 'date_of_receipt': 'date_of_receipt',
+    'tentative_date': 'tentative_date', 'group': 'group_name', 'group_name': 'group_name',
+    'officer': 'coordinating_officer', 'coordinating_officer': 'coordinating_officer',
+  };
+  headers.forEach((h, i) => {
+    const mapped = headerMappings[h] || h;
+    fieldMap[i] = mapped;
+  });
+  return lines.slice(1).map(line => {
+    const vals = line.split(',');
+    const row = {};
+    vals.forEach((v, i) => {
+      if (fieldMap[i]) row[fieldMap[i]] = v.trim();
+    });
+    return row;
+  });
+}
+
+// ── Export CSV ─────────────────────────────────────────────────
+async function recExportCSV() {
+  try {
+    const data = await api(`/api/records/entries/${state.recCategory}/${state.recYear}/${state.recQuarter}`);
+    if (data.rows.length === 0) { showToast('No records to export', 'info'); return; }
+    const allFields = REC_FIELD_SECTIONS.flatMap(s => s.fields);
+    const headers = allFields.map(f => f.label);
+    const csvRows = [headers.join(',')];
+    data.rows.forEach(row => {
+      csvRows.push(allFields.map(f => {
+        const v = row[f.key];
+        if (v === null || v === undefined) return '';
+        const s = String(v);
+        return s.includes(',') ? `"${s}"` : s;
+      }).join(','));
+    });
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${state.recCategory}_${state.recYear}_Q${state.recQuarter}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  RECORDS ANALYTICS DASHBOARD
+// ══════════════════════════════════════════════════════════════
+async function renderRecordsAnalyticsView() {
+  const sidebar = document.getElementById('sidebar-content');
+  sidebar.innerHTML = `<div class="sidebar-item active" onclick="switchView('recordsAnalytics')"><span class="icon">📈</span><span class="label">Analytics Overview</span></div>
+  <div class="sidebar-item" onclick="switchView('records')"><span class="icon">📂</span><span class="label">Records Explorer</span></div>`;
+  const tabBar = document.getElementById('tab-bar');
+  tabBar.innerHTML = '<div class="tab-item active">📈 Records Analytics</div>';
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading">Loading analytics...</div>';
+  try {
+    const data = await api('/api/records/analytics');
+    let html = '';
+    // Filters
+    html += `<div class="rec-analytics-filters">
+      <div class="rec-analytics-title">Records Analytics</div>
+      <div class="rec-analytics-controls">
+        <select id="rec-an-year" onchange="recAnalyticsFilter()" class="rec-an-select">
+          <option value="">All Years</option>
+          ${(data.years || []).map(y => `<option value="${y}">${y}</option>`).join('')}
+        </select>
+        <select id="rec-an-sector" onchange="recAnalyticsFilter()" class="rec-an-select">
+          <option value="">All Sectors</option>
+          ${(data.sectors || []).map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('')}
+        </select>
+      </div>
+    </div>`;
+    // KPI Cards
+    const received = (data.categoryTotals.find(c => c.category === 'applications_received') || {}).cnt || 0;
+    const permitted = (data.categoryTotals.find(c => c.category === 'permitted_applications') || {}).cnt || 0;
+    const monitoring = (data.categoryTotals.find(c => c.category === 'monitoring_records') || {}).cnt || 0;
+    const total = received + permitted + monitoring;
+    html += `<div class="rec-an-kpis">
+      <div class="rec-an-kpi rec-an-kpi--blue"><div class="rec-an-kpi-val">${total.toLocaleString()}</div><div class="rec-an-kpi-label">Total Records</div></div>
+      <div class="rec-an-kpi rec-an-kpi--orange"><div class="rec-an-kpi-val">${received.toLocaleString()}</div><div class="rec-an-kpi-label">Applications Received</div></div>
+      <div class="rec-an-kpi rec-an-kpi--green"><div class="rec-an-kpi-val">${permitted.toLocaleString()}</div><div class="rec-an-kpi-label">Permitted</div></div>
+      <div class="rec-an-kpi rec-an-kpi--purple"><div class="rec-an-kpi-val">${monitoring.toLocaleString()}</div><div class="rec-an-kpi-label">Monitoring</div></div>
+    </div>`;
+    // Fulfillment Funnel
+    const funnelPct = data.funnel.received > 0 ? Math.round((data.funnel.permitted / data.funnel.received) * 100) : 0;
+    html += `<div class="rec-an-row">
+      <div class="rec-an-card rec-an-card-half">
+        <div class="rec-an-card-title">Fulfillment Funnel</div>
+        <div class="rec-an-funnel">
+          <div class="rec-an-funnel-bar" style="width:100%;background:var(--orange-bg);border:1px solid var(--orange)">
+            <span>Received: ${data.funnel.received}</span>
+          </div>
+          <div class="rec-an-funnel-bar" style="width:${Math.max(funnelPct, 5)}%;background:var(--green-bg);border:1px solid var(--green)">
+            <span>Permitted: ${data.funnel.permitted} (${funnelPct}%)</span>
+          </div>
+        </div>
+      </div>
+      <div class="rec-an-card rec-an-card-half">
+        <div class="rec-an-card-title">Status Distribution</div>
+        <div class="rec-an-status-list">
+          ${data.statusDistribution.map(s => {
+            const pct = total > 0 ? Math.round((s.cnt / total) * 100) : 0;
+            return `<div class="rec-an-status-row">
+              <span class="rec-status-chip ${recGetStatusClass(s.status)}">${escHtml(s.status || 'Unknown')}</span>
+              <div class="rec-an-bar-track"><div class="rec-an-bar-fill" style="width:${pct}%"></div></div>
+              <span class="rec-an-bar-val">${s.cnt}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+    // Sector Distribution & Revenue by MMDA
+    html += `<div class="rec-an-row">
+      <div class="rec-an-card rec-an-card-half">
+        <div class="rec-an-card-title">Sector Distribution</div>
+        <canvas id="rec-an-sector-chart" height="250"></canvas>
+      </div>
+      <div class="rec-an-card rec-an-card-half">
+        <div class="rec-an-card-title">Revenue by MMDA</div>
+        <canvas id="rec-an-revenue-chart" height="250"></canvas>
+      </div>
+    </div>`;
+    // Quarterly Volume
+    html += `<div class="rec-an-row">
+      <div class="rec-an-card">
+        <div class="rec-an-card-title">Quarterly Volume</div>
+        <canvas id="rec-an-quarterly-chart" height="200"></canvas>
+      </div>
+    </div>`;
+    content.innerHTML = html;
+    // Render charts
+    recRenderAnalyticsCharts(data);
+  } catch (e) {
+    content.innerHTML = `<div class="empty-state"><div class="empty-title">Error</div><div class="empty-desc">${e.message}</div></div>`;
+  }
+}
+
+async function recAnalyticsFilter() {
+  const year = document.getElementById('rec-an-year')?.value || '';
+  const sector = document.getElementById('rec-an-sector')?.value || '';
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading">Updating analytics...</div>';
+  try {
+    const params = new URLSearchParams();
+    if (year) params.set('year', year);
+    if (sector) params.set('sector', sector);
+    const data = await api(`/api/records/analytics?${params}`);
+    // Re-render with same function but passing filters
+    renderRecordsAnalyticsView();
+  } catch (e) {
+    content.innerHTML = `<div style="padding:16px;color:var(--red)">${e.message}</div>`;
+  }
+}
+
+function recRenderAnalyticsCharts(data) {
+  // Check if Chart.js is available
+  if (typeof Chart === 'undefined') return;
+  // Sector donut
+  const sectorCtx = document.getElementById('rec-an-sector-chart');
+  if (sectorCtx && data.sectorDistribution.length > 0) {
+    new Chart(sectorCtx, {
+      type: 'doughnut',
+      data: {
+        labels: data.sectorDistribution.map(s => s.sector || 'Unknown'),
+        datasets: [{
+          data: data.sectorDistribution.map(s => s.cnt),
+          backgroundColor: ['#0078d4', '#4ec9b0', '#ce9178', '#dcdcaa', '#f14c4c', '#c586c0', '#4fc1ff', '#569cd6', '#d7ba7d', '#9cdcfe', '#608b4e', '#b5cea8', '#d4d4d4', '#e06c75', '#56b6c2'],
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'right', labels: { color: '#ccc', font: { size: 11 } } } }
+      }
+    });
+  }
+  // Revenue bar chart
+  const revCtx = document.getElementById('rec-an-revenue-chart');
+  if (revCtx && data.revenueByMmda.length > 0) {
+    new Chart(revCtx, {
+      type: 'bar',
+      data: {
+        labels: data.revenueByMmda.map(r => r.mmda || 'Unknown'),
+        datasets: [
+          { label: 'Processing Fees', data: data.revenueByMmda.map(r => r.proc_fees), backgroundColor: '#0078d4' },
+          { label: 'Permit Fees', data: data.revenueByMmda.map(r => r.perm_fees), backgroundColor: '#4ec9b0' },
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: { x: { ticks: { color: '#999', font: { size: 10 } }, grid: { color: '#333' } }, y: { ticks: { color: '#999' }, grid: { color: '#333' } } },
+        plugins: { legend: { labels: { color: '#ccc' } } }
+      }
+    });
+  }
+  // Quarterly line chart
+  const qCtx = document.getElementById('rec-an-quarterly-chart');
+  if (qCtx && data.quarterlyVolume.length > 0) {
+    const categories = ['applications_received', 'permitted_applications', 'monitoring_records'];
+    const catColors = { applications_received: '#ce9178', permitted_applications: '#4ec9b0', monitoring_records: '#569cd6' };
+    const allLabels = [...new Set(data.quarterlyVolume.map(q => `${q.year} Q${q.quarter}`))].sort();
+    const datasets = categories.map(cat => {
+      const catData = data.quarterlyVolume.filter(q => q.category === cat);
+      const dataMap = {};
+      catData.forEach(q => { dataMap[`${q.year} Q${q.quarter}`] = q.cnt; });
+      return {
+        label: REC_CATEGORY_LABELS[cat],
+        data: allLabels.map(l => dataMap[l] || 0),
+        borderColor: catColors[cat],
+        backgroundColor: catColors[cat] + '33',
+        fill: true,
+        tension: 0.3,
+      };
+    });
+    new Chart(qCtx, {
+      type: 'line',
+      data: { labels: allLabels, datasets },
+      options: {
+        responsive: true,
+        scales: { x: { ticks: { color: '#999' }, grid: { color: '#333' } }, y: { ticks: { color: '#999' }, grid: { color: '#333' }, beginAtZero: true } },
+        plugins: { legend: { labels: { color: '#ccc' } } }
+      }
+    });
   }
 }
 
@@ -8907,11 +9964,25 @@ async function exportFilteredPermits() {
 
 function clearPermitFilters() {
   [
-    "pf-name", "pf-file-number", "pf-permit-number", "pf-officer",
-    "pf-undertaking", "pf-district", "pf-jurisdiction", "pf-location",
-    "pf-file-location", "pf-status", "pf-app-type", "pf-screening",
-    "pf-permitted-by", "pf-remarks", "pf-status-comments",
-    "pf-issue-from", "pf-issue-to", "pf-expiry-from", "pf-expiry-to",
+    "pf-name",
+    "pf-file-number",
+    "pf-permit-number",
+    "pf-officer",
+    "pf-undertaking",
+    "pf-district",
+    "pf-jurisdiction",
+    "pf-location",
+    "pf-file-location",
+    "pf-status",
+    "pf-app-type",
+    "pf-screening",
+    "pf-permitted-by",
+    "pf-remarks",
+    "pf-status-comments",
+    "pf-issue-from",
+    "pf-issue-to",
+    "pf-expiry-from",
+    "pf-expiry-to",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = "";

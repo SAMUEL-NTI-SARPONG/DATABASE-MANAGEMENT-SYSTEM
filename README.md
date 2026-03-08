@@ -82,7 +82,7 @@ Five main data tables:
 | **MOVEMENT**    | Vehicle movement tracking                 |
 | **WASTE**       | Waste management records                  |
 | **Stores**      | Equipment/stores inventory                |
-| **tbl_keyword** | Environmental reports submission           |
+| **tbl_keyword** | Environmental reports submission          |
 
 Each table supports:
 

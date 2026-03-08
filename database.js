@@ -342,7 +342,6 @@ async function initDatabase() {
     `CREATE INDEX IF NOT EXISTS idx_scan_log_company ON scan_log(company_name);`,
   );
 
-  
   // Custom dropdown options — admin-managed dropdown values per table+field
   db.exec(`CREATE TABLE IF NOT EXISTS custom_dropdown_options (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -353,7 +352,9 @@ async function initDatabase() {
     created_at TEXT DEFAULT (datetime('now','localtime')),
     UNIQUE(table_name, field_name, option_value)
   )`);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_cdo_table_field ON custom_dropdown_options(table_name, field_name)`);
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_cdo_table_field ON custom_dropdown_options(table_name, field_name)`,
+  );
 
   // Custom fields metadata — tracks user-added columns and their config
   db.exec(`CREATE TABLE IF NOT EXISTS custom_fields (
@@ -369,8 +370,18 @@ async function initDatabase() {
   )`);
 
   // Add Screening and PermittedBy columns to PERMIT (migration for existing DBs)
-  try { db._db.run(`ALTER TABLE PERMIT ADD COLUMN Screening TEXT DEFAULT 'Not Done'`); } catch(e) { /* already exists */ }
-  try { db._db.run(`ALTER TABLE PERMIT ADD COLUMN PermittedBy TEXT DEFAULT ''`); } catch(e) { /* already exists */ }
+  try {
+    db._db.run(
+      `ALTER TABLE PERMIT ADD COLUMN Screening TEXT DEFAULT 'Not Done'`,
+    );
+  } catch (e) {
+    /* already exists */
+  }
+  try {
+    db._db.run(`ALTER TABLE PERMIT ADD COLUMN PermittedBy TEXT DEFAULT ''`);
+  } catch (e) {
+    /* already exists */
+  }
 
   // Field renames — tracks display label overrides for existing columns
   db.exec(`CREATE TABLE IF NOT EXISTS field_renames (
@@ -382,6 +393,85 @@ async function initDatabase() {
     updated_at TEXT DEFAULT (datetime('now','localtime')),
     UNIQUE(table_name, original_name)
   )`);
+
+  // ── Records Management Module ──────────────────────────────
+  // Years registry per category
+  db.exec(`CREATE TABLE IF NOT EXISTS records_years (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    created_by TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(category, year)
+  )`);
+
+  // Records entries — all EPA spreadsheet fields, organised by category/year/quarter
+  db.exec(`CREATE TABLE IF NOT EXISTS records_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    quarter INTEGER NOT NULL CHECK(quarter IN (1,2,3,4)),
+    company_name TEXT,
+    client_id TEXT,
+    contact_person TEXT,
+    telephone TEXT,
+    email TEXT,
+    sector TEXT,
+    type_of_activity TEXT,
+    facility_location TEXT,
+    district TEXT,
+    mmda TEXT,
+    jurisdiction TEXT,
+    latitude TEXT,
+    longitude TEXT,
+    file_number TEXT,
+    permit_number TEXT,
+    permit_holder TEXT,
+    permit_issue_date TEXT,
+    permit_expiry_date TEXT,
+    permit_renewal_date TEXT,
+    processing_fee REAL,
+    date_of_processing_fee TEXT,
+    date_of_payment_processing TEXT,
+    permit_fee REAL,
+    date_of_permit_fee TEXT,
+    date_of_payment_permit TEXT,
+    invoice_number TEXT,
+    date_of_invoice TEXT,
+    amount_to_pay REAL,
+    amount_paid REAL,
+    balance REAL,
+    date_of_payment TEXT,
+    total_amount REAL,
+    date_of_receipt TEXT,
+    date_of_screening TEXT,
+    date_of_draft_receipt TEXT,
+    date_of_revised_receipt TEXT,
+    date_review_sent TEXT,
+    date_of_emp_submission TEXT,
+    date_of_trc TEXT,
+    date_sent_head_office TEXT,
+    date_received_head_office TEXT,
+    tentative_date TEXT,
+    group_name TEXT,
+    coordinating_officer TEXT,
+    monitoring_status TEXT,
+    compliance_status TEXT,
+    compliance_date TEXT,
+    environmental_report TEXT,
+    due_date_reporting TEXT,
+    reporting_days TEXT,
+    officer_on_file TEXT,
+    application_status TEXT,
+    status TEXT DEFAULT 'Pending',
+    remarks TEXT,
+    is_forward_filled TEXT DEFAULT '',
+    created_by TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_records_entries_cat ON records_entries(category, year, quarter)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_records_entries_company ON records_entries(company_name)`);
 
   saveToDisk();
   return db;
