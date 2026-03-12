@@ -2994,9 +2994,9 @@ async function loadEditDocuments(table, id, row) {
     // Upload dropzone
     html += `<div class="att-dropzone" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="event.preventDefault();this.classList.remove('dragover');handleEditAttDrop(event,'${table}',${id})">
       <div class="att-dropzone-text">
-        <span style="font-size:24px">📎</span>
-        <span>Drag & drop files or</span>
-        <button class="btn btn-sm" onclick="document.getElementById('edit-att-upload-input').click()">Browse Files</button>
+        <span>📎</span>
+        <span>Drop files here or</span>
+        <button class="btn btn-sm" style="font-size:11px;padding:2px 8px" onclick="document.getElementById('edit-att-upload-input').click()">Browse</button>
       </div>
       <input type="file" id="edit-att-upload-input" multiple style="display:none" onchange="uploadEditAttachments('${table}',${id})">
     </div>`;
@@ -3648,7 +3648,7 @@ async function showEditRecordModal(table, id) {
         </div>
         <div class="pm-edit-documents" style="grid-column:1/-1">
           <div class="pm-card"><div class="pm-card-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.49"/></svg>Documents &amp; Files</div>
-            <div id="edit-documents-container"><div style="padding:12px;color:var(--text-muted)">Loading documents...</div></div>
+            <div id="edit-documents-container" style="max-height:200px;overflow-y:auto"><div style="padding:8px;color:var(--text-muted);font-size:12px">Loading documents...</div></div>
           </div>
         </div>
       </div>

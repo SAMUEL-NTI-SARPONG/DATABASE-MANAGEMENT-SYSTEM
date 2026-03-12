@@ -3724,10 +3724,10 @@ select {
    DRAG & DROP UPLOAD / SHARED DOCS BROWSER
    ══════════════════════════════════════════════════════════════ */
 .att-dropzone {
-  margin-top: 12px;
+  margin-top: 8px;
   border: 2px dashed var(--border);
   border-radius: var(--radius-md);
-  padding: 20px;
+  padding: 12px;
   text-align: center;
   transition: all 0.2s;
   cursor: pointer;
@@ -3739,11 +3739,12 @@ select {
 }
 .att-dropzone-text {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   gap: 8px;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: 12px;
+  justify-content: center;
 }
 .att-dropzone-text .btn {
   margin-top: 4px;

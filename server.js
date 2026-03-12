@@ -54,6 +54,11 @@ const loginLimiter = rateLimit({
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
+// Serve XLSX browser bundle for client-side Excel operations
+app.get("/xlsx.full.min.js", (req, res) => {
+  res.sendFile(path.join(__dirname, "node_modules", "xlsx", "dist", "xlsx.full.min.js"));
+});
+
 // ── File upload configuration (Access files) ─────────────────
 const UPLOAD_DIR = path.join(APP_ROOT, "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
