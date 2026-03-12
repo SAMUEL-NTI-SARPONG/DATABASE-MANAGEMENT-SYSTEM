@@ -702,7 +702,7 @@ const FORM_DEFINITIONS = {
   PERMIT_FORM: {
     name: "Permit Application Form",
     description: "EPA Environmental Permit Application",
-    icon: "??",
+    icon: "📋",
     table: "PERMIT",
     sections: [
       {
@@ -785,7 +785,7 @@ const FORM_DEFINITIONS = {
   MOVEMENT_FORM: {
     name: "Vehicle Movement Form",
     description: "Fleet vehicle movement tracking",
-    icon: "??",
+    icon: "🚗",
     table: "MOVEMENT",
     sections: [
       {
@@ -839,7 +839,7 @@ const FORM_DEFINITIONS = {
   WASTE_FORM: {
     name: "Waste Inspection Form",
     description: "Waste management and inspection",
-    icon: "??",
+    icon: "♻️",
     table: "WASTE",
     sections: [
       {
@@ -878,7 +878,7 @@ const FORM_DEFINITIONS = {
   STORES_FORM: {
     name: "Stores Inventory Form",
     description: "Store items and inventory",
-    icon: "??",
+    icon: "📦",
     table: "Stores",
     sections: [
       {
@@ -906,7 +906,7 @@ const FORM_DEFINITIONS = {
   KEYWORD_FORM: {
     name: "Document Filing Form",
     description: "Environmental reports submission and tracking",
-    icon: "??",
+    icon: "📄",
     table: "tbl_keyword",
     sections: [
       {
@@ -944,7 +944,7 @@ const REPORT_DEFINITIONS = {
     description: "Summary of permits by application status",
     briefing:
       "This report provides a comprehensive breakdown of all environmental permits in the system, grouped by their current application status (e.g., Permit Issued, Processing Fee Invoice Issued, Paid Permit Fee, etc.) and cross-referenced with the classification of each undertaking. It helps management understand how many permits are at each stage of the approval pipeline, identify bottlenecks in processing, and track the overall workload distribution across different industry sectors. Use this report to monitor permit processing efficiency and ensure no applications are stalled.",
-    icon: "??",
+    icon: "📊",
     sql: `SELECT ApplicationStatus, COUNT(*) AS Total, ClassificationOfUndertaking FROM PERMIT WHERE ApplicationStatus IS NOT NULL GROUP BY ApplicationStatus, ClassificationOfUndertaking ORDER BY Total DESC`,
   },
   QUARTERLY: {
@@ -952,7 +952,7 @@ const REPORT_DEFINITIONS = {
     description: "Permits issued by quarter",
     briefing:
       "This report shows the number of environmental permits issued by the Sekondi Office in each quarter (Q1 through Q4) for a specified year. It provides a seasonal view of permit issuance activity, helping management identify peak periods, plan staffing and resources accordingly, and track year-over-year performance. The data is filtered to only include permits processed by the Sekondi Office, making it ideal for regional performance reviews and annual planning.",
-    icon: "??",
+    icon: "📅",
     params: [
       {
         name: "year",
@@ -968,7 +968,7 @@ const REPORT_DEFINITIONS = {
     description: "Compliance enforcement overview",
     briefing:
       "This report identifies all permits currently flagged for compliance enforcement action. It groups these permits by their application status to show how many enforcement cases exist at each processing stage. This is critical for the EPA's regulatory function — it helps compliance officers prioritize enforcement actions, track the status of ongoing enforcement cases, and report to management on the agency's regulatory activity. A high count indicates areas needing increased monitoring or follow-up.",
-    icon: "??",
+    icon: "⚖️",
     sql: `SELECT Compliance, ApplicationStatus, COUNT(*) AS Total FROM PERMIT WHERE Compliance = 'Compliance Enforcement' GROUP BY ApplicationStatus ORDER BY Total DESC`,
   },
   FINANCIAL: {
@@ -976,7 +976,7 @@ const REPORT_DEFINITIONS = {
     description: "Fees overview",
     briefing:
       "This report provides a complete financial overview of the EPA's permit fee collection. It shows the total number of permits, cumulative processing fees collected, total permit fees collected, and the grand total revenue. It also tracks how many applicants have paid their processing fees, how many have paid their permit fees, and how many permits have actually been issued. This report is essential for financial reporting, budget planning, revenue tracking, and identifying outstanding payments that need follow-up.",
-    icon: "??",
+    icon: "💰",
     sql: `SELECT COUNT(*) AS TotalPermits, SUM(CASE WHEN ProcessingFee > 0 THEN ProcessingFee ELSE 0 END) AS TotalProcessingFees, SUM(CASE WHEN PermitFee > 0 THEN PermitFee ELSE 0 END) AS TotalPermitFees, SUM(CASE WHEN TotalAmount > 0 THEN TotalAmount ELSE 0 END) AS GrandTotal, SUM(CASE WHEN DateOfPaymentOfProcessingFee IS NOT NULL THEN 1 ELSE 0 END) AS PaidProcessingFee, SUM(CASE WHEN DateOfPaymentOfPermitFee IS NOT NULL THEN 1 ELSE 0 END) AS PaidPermitFee, SUM(CASE WHEN DateOfIssueOfPermit IS NOT NULL THEN 1 ELSE 0 END) AS PermitsIssued FROM PERMIT`,
   },
   EXPIRATION: {
@@ -984,7 +984,7 @@ const REPORT_DEFINITIONS = {
     description: "Expired, expiring, and valid permits",
     briefing:
       "This report provides a critical snapshot of permit validity across the entire database. It categorizes all permits into four groups: Expired (past their expiration date), Expiring Soon (within the next 90 days), Valid (more than 90 days until expiry), and No Date (permits without an expiration date on file). This is one of the most important operational reports — it alerts staff to permits needing immediate renewal attention, helps prevent lapses in environmental compliance, and identifies data quality issues where expiration dates are missing.",
-    icon: "?",
+    icon: "⏰",
     sql: `SELECT SUM(CASE WHEN PermitExpirationDate IS NOT NULL AND PermitExpirationDate < date('now') THEN 1 ELSE 0 END) AS Expired, SUM(CASE WHEN PermitExpirationDate IS NOT NULL AND PermitExpirationDate >= date('now') AND PermitExpirationDate <= date('now','+90 days') THEN 1 ELSE 0 END) AS ExpiringSoon, SUM(CASE WHEN PermitExpirationDate IS NOT NULL AND PermitExpirationDate > date('now','+90 days') THEN 1 ELSE 0 END) AS Valid, SUM(CASE WHEN PermitExpirationDate IS NULL OR PermitExpirationDate = '' THEN 1 ELSE 0 END) AS NoDate FROM PERMIT`,
   },
   FLEET: {
@@ -992,7 +992,7 @@ const REPORT_DEFINITIONS = {
     description: "Vehicle fleet overview",
     briefing:
       "This report provides a comprehensive status check of all EPA fleet vehicles. For each vehicle, it shows the current status of three critical documents: Driving Licence, Insurance, and Road Worthy certificate — indicating whether each is Valid, Expired, or not on file (N/A). Fleet managers can use this report to identify vehicles that cannot legally operate, plan renewals before documents expire, and maintain full fleet compliance. Any vehicle showing 'EXPIRED' status requires immediate attention.",
-    icon: "??",
+    icon: "🚗",
     sql: `SELECT Vehicle, ExpiryDate AS LicenceExpiry, ExpiryDateOfInsurance AS InsuranceExpiry, ExpiryDateOfRoadWealthy AS RoadWorthyExpiry, CASE WHEN ExpiryDate IS NOT NULL AND ExpiryDate < date('now') THEN 'EXPIRED' WHEN ExpiryDate IS NOT NULL THEN 'Valid' ELSE 'N/A' END AS LicenceStatus, CASE WHEN ExpiryDateOfInsurance IS NOT NULL AND ExpiryDateOfInsurance < date('now') THEN 'EXPIRED' WHEN ExpiryDateOfInsurance IS NOT NULL THEN 'Valid' ELSE 'N/A' END AS InsuranceStatus, CASE WHEN ExpiryDateOfRoadWealthy IS NOT NULL AND ExpiryDateOfRoadWealthy < date('now') THEN 'EXPIRED' WHEN ExpiryDateOfRoadWealthy IS NOT NULL THEN 'Valid' ELSE 'N/A' END AS RoadWorthyStatus FROM MOVEMENT ORDER BY Vehicle`,
   },
   DISTRICT: {
@@ -1000,7 +1000,7 @@ const REPORT_DEFINITIONS = {
     description: "Count by district",
     briefing:
       "This report shows the geographic distribution of environmental permits across all districts in the EPA's jurisdiction. Each district is listed with its total number of permits, sorted from highest to lowest. This helps regional planners understand where the highest concentration of regulated facilities exists, allocate inspection resources proportionally, and identify underserved districts that may need outreach. It is particularly useful for annual planning, resource allocation meetings, and regional performance comparisons.",
-    icon: "???",
+    icon: "🗺️",
     sql: `SELECT District, COUNT(*) AS Total FROM PERMIT WHERE District IS NOT NULL AND District != '' GROUP BY District ORDER BY Total DESC`,
   },
   CLASSIFICATION: {
@@ -1008,7 +1008,7 @@ const REPORT_DEFINITIONS = {
     description: "Count by sector",
     briefing:
       "This report breaks down all environmental permits by the industry classification or sector of each undertaking (e.g., Mining, Manufacturing, Hospitality, Health, Services, etc.). It shows how many permits exist in each sector, sorted from the most to the least common. This is essential for understanding the EPA's regulatory landscape — which industries dominate the permit portfolio, where environmental risks may be concentrated, and which sectors are growing or declining in permit applications over time.",
-    icon: "??",
+    icon: "📂",
     sql: `SELECT ClassificationOfUndertaking AS Classification, COUNT(*) AS Total FROM PERMIT WHERE ClassificationOfUndertaking IS NOT NULL AND ClassificationOfUndertaking != '' GROUP BY ClassificationOfUndertaking ORDER BY Total DESC`,
   },
 };
@@ -1411,6 +1411,8 @@ app.post("/api/users", auth, adminOnly, (req, res) => {
         { cat: "page", key: "queries" },
         { cat: "page", key: "forms" },
         { cat: "page", key: "reports" },
+        // { cat: "page", key: "records" },
+        // { cat: "page", key: "recordsAnalytics" },
       ];
       for (const f of defaultFeatures) {
         db.run(
@@ -3603,6 +3605,8 @@ app.get("/api/feature-permissions/available", auth, adminOnly, (req, res) => {
       { key: "scanlog", name: "Scan Log" },
       { key: "permitfilter", name: "Permit Filter & Export" },
       { key: "enrichment", name: "Data Enrichment" },
+      // { key: "records", name: "Records Entries" },
+      // { key: "recordsAnalytics", name: "Records Analytics" },
     ],
     tables: DATA_TABLES.map((t) => ({ key: t, name: t })),
     queries: queryList,
@@ -5651,7 +5655,11 @@ app.put("/api/field-renames/:table", auth, (req, res) => {
 // ══════════════════════════════════════════════════════════════
 //  RECORDS MANAGEMENT — hierarchical category/year/quarter
 // ══════════════════════════════════════════════════════════════
-const RECORD_CATEGORIES = ['applications_received', 'permitted_applications', 'monitoring_records'];
+const RECORD_CATEGORIES = [
+  "applications_received",
+  "permitted_applications",
+  "monitoring_records",
+];
 
 /** List years for a category */
 app.get("/api/records/years/:category", auth, (req, res) => {
@@ -5662,16 +5670,16 @@ app.get("/api/records/years/:category", auth, (req, res) => {
       return res.status(400).json({ error: "Invalid category" });
     const years = db.all(
       "SELECT * FROM records_years WHERE category = ? ORDER BY year DESC",
-      [cat]
+      [cat],
     );
     // Get entry counts per year/quarter
     const counts = db.all(
       `SELECT year, quarter, COUNT(*) as cnt FROM records_entries
        WHERE category = ? GROUP BY year, quarter`,
-      [cat]
+      [cat],
     );
     const countMap = {};
-    counts.forEach(c => {
+    counts.forEach((c) => {
       if (!countMap[c.year]) countMap[c.year] = {};
       countMap[c.year][c.quarter] = c.cnt;
     });
@@ -5693,13 +5701,15 @@ app.post("/api/records/years", auth, (req, res) => {
       return res.status(400).json({ error: "Invalid year" });
     const existing = db.get(
       "SELECT id FROM records_years WHERE category = ? AND year = ?",
-      [category, y]
+      [category, y],
     );
     if (existing)
-      return res.status(400).json({ error: "Year already exists for this category" });
+      return res
+        .status(400)
+        .json({ error: "Year already exists for this category" });
     const result = db.run(
       "INSERT INTO records_years (category, year, created_by) VALUES (?, ?, ?)",
-      [category, y, req.user.username]
+      [category, y, req.user.username],
     );
     saveToDisk();
     logActivity(req, "add_record_year", category, String(y));
@@ -5719,11 +5729,16 @@ app.delete("/api/records/years/:category/:year", auth, (req, res) => {
     const y = parseInt(req.params.year);
     const count = db.get(
       "SELECT COUNT(*) as c FROM records_entries WHERE category = ? AND year = ?",
-      [cat, y]
+      [cat, y],
     );
     if (count && count.c > 0)
-      return res.status(400).json({ error: `Cannot delete year with ${count.c} entries. Remove entries first.` });
-    db.run("DELETE FROM records_years WHERE category = ? AND year = ?", [cat, y]);
+      return res.status(400).json({
+        error: `Cannot delete year with ${count.c} entries. Remove entries first.`,
+      });
+    db.run("DELETE FROM records_years WHERE category = ? AND year = ?", [
+      cat,
+      y,
+    ]);
     saveToDisk();
     logActivity(req, "delete_record_year", cat, String(y));
     res.json({ ok: true });
@@ -5751,7 +5766,7 @@ app.get("/api/records/entries/:category/:year/:quarter", auth, (req, res) => {
     }
     const rows = db.all(
       `SELECT * FROM records_entries WHERE category = ? AND year = ? AND quarter = ?${whereExtra} ORDER BY id DESC`,
-      params
+      params,
     );
     res.json({ rows, total: rows.length });
   } catch (e) {
@@ -5763,7 +5778,9 @@ app.get("/api/records/entries/:category/:year/:quarter", auth, (req, res) => {
 app.get("/api/records/entry/:id", auth, (req, res) => {
   try {
     const db = getDb();
-    const row = db.get("SELECT * FROM records_entries WHERE id = ?", [parseInt(req.params.id)]);
+    const row = db.get("SELECT * FROM records_entries WHERE id = ?", [
+      parseInt(req.params.id),
+    ]);
     if (!row) return res.status(404).json({ error: "Entry not found" });
     res.json(row);
   } catch (e) {
@@ -5778,27 +5795,37 @@ app.post("/api/records/entries", auth, (req, res) => {
     const { category, year, quarter, ...fields } = req.body;
     if (!RECORD_CATEGORIES.includes(category))
       return res.status(400).json({ error: "Invalid category" });
-    const validCols = db.all('PRAGMA table_info("records_entries")').map(c => c.name)
-      .filter(c => !['id', 'created_at', 'updated_at'].includes(c));
+    const validCols = db
+      .all('PRAGMA table_info("records_entries")')
+      .map((c) => c.name)
+      .filter((c) => !["id", "created_at", "updated_at"].includes(c));
     const data = { category, year: parseInt(year), quarter: parseInt(quarter) };
     for (const [k, v] of Object.entries(fields)) {
-      if (validCols.includes(k)) data[k] = v === '' ? null : v;
+      if (validCols.includes(k)) data[k] = v === "" ? null : v;
     }
     if (!data.created_by) data.created_by = req.user.username;
     const cols = Object.keys(data);
-    const vals = cols.map(c => data[c]);
+    const vals = cols.map((c) => data[c]);
     const result = db.run(
-      `INSERT INTO records_entries (${cols.map(c => `"${c}"`).join(',')}) VALUES (${cols.map(() => '?').join(',')})`,
-      vals
+      `INSERT INTO records_entries (${cols.map((c) => `"${c}"`).join(",")}) VALUES (${cols.map(() => "?").join(",")})`,
+      vals,
     );
     // Ensure the year exists in records_years
     db.run(
       "INSERT OR IGNORE INTO records_years (category, year, created_by) VALUES (?, ?, ?)",
-      [category, data.year, req.user.username]
+      [category, data.year, req.user.username],
     );
-    const row = db.get("SELECT * FROM records_entries WHERE id = ?", [result.lastInsertRowid]);
+    const row = db.get("SELECT * FROM records_entries WHERE id = ?", [
+      result.lastInsertRowid,
+    ]);
     saveToDisk();
-    logActivity(req, "create_record_entry", category, `${year} Q${quarter} - ${fields.company_name || 'Entry'}`, result.lastInsertRowid);
+    logActivity(
+      req,
+      "create_record_entry",
+      category,
+      `${year} Q${quarter} - ${fields.company_name || "Entry"}`,
+      result.lastInsertRowid,
+    );
     res.json(row);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -5812,15 +5839,17 @@ app.put("/api/records/entry/:id", auth, (req, res) => {
     const id = parseInt(req.params.id);
     const oldRow = db.get("SELECT * FROM records_entries WHERE id = ?", [id]);
     if (!oldRow) return res.status(404).json({ error: "Entry not found" });
-    const validCols = db.all('PRAGMA table_info("records_entries")').map(c => c.name)
-      .filter(c => !['id', 'created_at'].includes(c));
-    const cols = Object.keys(req.body).filter(c => validCols.includes(c));
+    const validCols = db
+      .all('PRAGMA table_info("records_entries")')
+      .map((c) => c.name)
+      .filter((c) => !["id", "created_at"].includes(c));
+    const cols = Object.keys(req.body).filter((c) => validCols.includes(c));
     if (!cols.length) return res.status(400).json({ error: "No valid fields" });
-    const vals = cols.map(c => req.body[c] === '' ? null : req.body[c]);
+    const vals = cols.map((c) => (req.body[c] === "" ? null : req.body[c]));
     vals.push(id);
     db.run(
-      `UPDATE records_entries SET ${cols.map(c => `"${c}" = ?`).join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`,
-      vals
+      `UPDATE records_entries SET ${cols.map((c) => `"${c}" = ?`).join(", ")}, updated_at = datetime('now','localtime') WHERE id = ?`,
+      vals,
     );
     const row = db.get("SELECT * FROM records_entries WHERE id = ?", [id]);
     saveToDisk();
@@ -5840,7 +5869,13 @@ app.delete("/api/records/entry/:id", auth, (req, res) => {
     if (!oldRow) return res.status(404).json({ error: "Entry not found" });
     db.run("DELETE FROM records_entries WHERE id = ?", [id]);
     saveToDisk();
-    logActivity(req, "delete_record_entry", oldRow.category, `${oldRow.year} Q${oldRow.quarter} - ${oldRow.company_name || 'Entry'}`, id);
+    logActivity(
+      req,
+      "delete_record_entry",
+      oldRow.category,
+      `${oldRow.year} Q${oldRow.quarter} - ${oldRow.company_name || "Entry"}`,
+      id,
+    );
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -5860,15 +5895,20 @@ app.post("/api/records/import/:category/:year/:quarter", auth, (req, res) => {
     if (!Array.isArray(importRows) || importRows.length === 0)
       return res.status(400).json({ error: "No data rows" });
     // Forward-fill logic
-    const ffCols = ffillCols || ['tentative_date', 'group_name', 'coordinating_officer'];
+    const ffCols = ffillCols || [
+      "tentative_date",
+      "group_name",
+      "coordinating_officer",
+    ];
     const lastVals = {};
-    const processedRows = importRows.map(row => {
+    const processedRows = importRows.map((row) => {
       const processed = { ...row };
       for (const col of ffCols) {
-        if (!processed[col] || processed[col].toString().trim() === '') {
+        if (!processed[col] || processed[col].toString().trim() === "") {
           if (lastVals[col]) {
             processed[col] = lastVals[col];
-            processed.is_forward_filled = (processed.is_forward_filled || '') + col + ',';
+            processed.is_forward_filled =
+              (processed.is_forward_filled || "") + col + ",";
           }
         } else {
           lastVals[col] = processed[col];
@@ -5876,28 +5916,40 @@ app.post("/api/records/import/:category/:year/:quarter", auth, (req, res) => {
       }
       return processed;
     });
-    const validCols = db.all('PRAGMA table_info("records_entries")').map(c => c.name)
-      .filter(c => !['id', 'created_at', 'updated_at'].includes(c));
+    const validCols = db
+      .all('PRAGMA table_info("records_entries")')
+      .map((c) => c.name)
+      .filter((c) => !["id", "created_at", "updated_at"].includes(c));
     let inserted = 0;
     for (const row of processedRows) {
-      const data = { category: cat, year: y, quarter: q, created_by: req.user.username };
+      const data = {
+        category: cat,
+        year: y,
+        quarter: q,
+        created_by: req.user.username,
+      };
       for (const [k, v] of Object.entries(row)) {
-        if (validCols.includes(k)) data[k] = v === '' ? null : v;
+        if (validCols.includes(k)) data[k] = v === "" ? null : v;
       }
       const cols = Object.keys(data);
-      const vals = cols.map(c => data[c]);
+      const vals = cols.map((c) => data[c]);
       db.run(
-        `INSERT INTO records_entries (${cols.map(c => `"${c}"`).join(',')}) VALUES (${cols.map(() => '?').join(',')})`,
-        vals
+        `INSERT INTO records_entries (${cols.map((c) => `"${c}"`).join(",")}) VALUES (${cols.map(() => "?").join(",")})`,
+        vals,
       );
       inserted++;
     }
     db.run(
       "INSERT OR IGNORE INTO records_years (category, year, created_by) VALUES (?, ?, ?)",
-      [cat, y, req.user.username]
+      [cat, y, req.user.username],
     );
     saveToDisk();
-    logActivity(req, "bulk_import_records", cat, `${y} Q${q}: ${inserted} entries`);
+    logActivity(
+      req,
+      "bulk_import_records",
+      cat,
+      `${y} Q${q}: ${inserted} entries`,
+    );
     res.json({ ok: true, inserted });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -5912,46 +5964,57 @@ app.get("/api/records/analytics", auth, (req, res) => {
     const sectorFilter = req.query.sector || null;
     let whereClause = [];
     let params = [];
-    if (yearFilter) { whereClause.push("year = ?"); params.push(yearFilter); }
-    if (sectorFilter) { whereClause.push("sector = ?"); params.push(sectorFilter); }
-    const where = whereClause.length > 0 ? "WHERE " + whereClause.join(" AND ") : "";
+    if (yearFilter) {
+      whereClause.push("year = ?");
+      params.push(yearFilter);
+    }
+    if (sectorFilter) {
+      whereClause.push("sector = ?");
+      params.push(sectorFilter);
+    }
+    const where =
+      whereClause.length > 0 ? "WHERE " + whereClause.join(" AND ") : "";
     // Category totals
     const catTotals = db.all(
       `SELECT category, COUNT(*) as cnt FROM records_entries ${where} GROUP BY category`,
-      params
+      params,
     );
     // Status distribution
     const statusDist = db.all(
       `SELECT status, COUNT(*) as cnt FROM records_entries ${where} GROUP BY status`,
-      params
+      params,
     );
     // Sector distribution
     const sectorDist = db.all(
       `SELECT sector, COUNT(*) as cnt FROM records_entries ${where} GROUP BY sector ORDER BY cnt DESC LIMIT 15`,
-      params
+      params,
     );
     // Revenue by MMDA
     const revByMmda = db.all(
       `SELECT mmda, SUM(COALESCE(processing_fee,0)) as proc_fees, SUM(COALESCE(permit_fee,0)) as perm_fees, SUM(COALESCE(total_amount,0)) as total
        FROM records_entries ${where} GROUP BY mmda HAVING mmda IS NOT NULL AND mmda != '' ORDER BY total DESC LIMIT 15`,
-      params
+      params,
     );
     // Quarterly volume
     const quarterlyVol = db.all(
       `SELECT year, quarter, category, COUNT(*) as cnt FROM records_entries ${where} GROUP BY year, quarter, category ORDER BY year, quarter`,
-      params
+      params,
     );
     // All years for filters
-    const years = db.all("SELECT DISTINCT year FROM records_entries ORDER BY year DESC");
-    const sectors = db.all("SELECT DISTINCT sector FROM records_entries WHERE sector IS NOT NULL AND sector != '' ORDER BY sector");
+    const years = db.all(
+      "SELECT DISTINCT year FROM records_entries ORDER BY year DESC",
+    );
+    const sectors = db.all(
+      "SELECT DISTINCT sector FROM records_entries WHERE sector IS NOT NULL AND sector != '' ORDER BY sector",
+    );
     // Funnel: received → permitted
     const funnelReceived = db.get(
-      `SELECT COUNT(*) as cnt FROM records_entries WHERE category = 'applications_received' ${yearFilter ? 'AND year = ?' : ''}`,
-      yearFilter ? [yearFilter] : []
+      `SELECT COUNT(*) as cnt FROM records_entries WHERE category = 'applications_received' ${yearFilter ? "AND year = ?" : ""}`,
+      yearFilter ? [yearFilter] : [],
     );
     const funnelPermitted = db.get(
-      `SELECT COUNT(*) as cnt FROM records_entries WHERE category = 'permitted_applications' ${yearFilter ? 'AND year = ?' : ''}`,
-      yearFilter ? [yearFilter] : []
+      `SELECT COUNT(*) as cnt FROM records_entries WHERE category = 'permitted_applications' ${yearFilter ? "AND year = ?" : ""}`,
+      yearFilter ? [yearFilter] : [],
     );
     res.json({
       categoryTotals: catTotals,
@@ -5959,10 +6022,862 @@ app.get("/api/records/analytics", auth, (req, res) => {
       sectorDistribution: sectorDist,
       revenueByMmda: revByMmda,
       quarterlyVolume: quarterlyVol,
-      funnel: { received: funnelReceived?.cnt || 0, permitted: funnelPermitted?.cnt || 0 },
-      years: years.map(y => y.year),
-      sectors: sectors.map(s => s.sector)
+      funnel: {
+        received: funnelReceived?.cnt || 0,
+        permitted: funnelPermitted?.cnt || 0,
+      },
+      years: years.map((y) => y.year),
+      sectors: sectors.map((s) => s.sector),
     });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+//  RECORDS ENTRIES — Excel Backup / Export
+// ══════════════════════════════════════════════════════════════
+
+/** Export all records entries as an Excel workbook (one sheet per category) */
+app.get("/api/records/backup-excel", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const wb = XLSX.utils.book_new();
+
+    const categories = [
+      { key: "applications_received", label: "Applications Received" },
+      { key: "permitted_applications", label: "Permitted Applications" },
+      { key: "monitoring_records", label: "Monitoring Records" },
+    ];
+
+    let totalRows = 0;
+    for (const cat of categories) {
+      const rows = db.all(
+        "SELECT * FROM records_entries WHERE category = ? ORDER BY year, quarter, id",
+        [cat.key],
+      );
+      totalRows += rows.length;
+      // Remove internal fields from export
+      const cleaned = rows.map((r) => {
+        const { created_at, updated_at, ...rest } = r;
+        return rest;
+      });
+      const ws = XLSX.utils.json_to_sheet(cleaned.length > 0 ? cleaned : [{}]);
+      XLSX.utils.book_append_sheet(wb, ws, cat.label);
+    }
+
+    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, 19);
+    const filename = `Records_Backup_${timestamp}.xlsx`;
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+    logActivity(
+      req,
+      "EXPORT_RECORDS_BACKUP",
+      "records_entries",
+      null,
+      null,
+      `${totalRows} records exported to Excel`,
+    );
+
+    res.send(buf);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+//  EXCEL IMPORT — robust extraction from EPA spreadsheets
+// ══════════════════════════════════════════════════════════════
+
+const excelUpload = multer({
+  dest: path.join(APP_ROOT, "uploads", "excel"),
+  limits: { fileSize: 100 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext === ".xlsx" || ext === ".xls") cb(null, true);
+    else cb(new Error("Only Excel files (.xlsx, .xls) are accepted"));
+  },
+});
+
+const excelUploadDir = path.join(APP_ROOT, "uploads", "excel");
+if (!fs.existsSync(excelUploadDir))
+  fs.mkdirSync(excelUploadDir, { recursive: true });
+
+// Temp storage for parsed Excel data (avoids sending huge payloads to browser)
+const excelTempDir = path.join(APP_ROOT, "uploads", "excel", "temp");
+if (!fs.existsSync(excelTempDir))
+  fs.mkdirSync(excelTempDir, { recursive: true });
+
+// Clean up temp files older than 2 hours on startup and every 30 minutes
+function cleanExcelTempFiles() {
+  try {
+    const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+    if (!fs.existsSync(excelTempDir)) return;
+    for (const f of fs.readdirSync(excelTempDir)) {
+      const fp = path.join(excelTempDir, f);
+      try {
+        const stat = fs.statSync(fp);
+        if (stat.mtimeMs < cutoff) fs.unlinkSync(fp);
+      } catch (_) {}
+    }
+  } catch (_) {}
+}
+cleanExcelTempFiles();
+setInterval(cleanExcelTempFiles, 30 * 60 * 1000);
+
+// ── Helper: normalise an Excel header string into a canonical key ──
+function normalizeHeader(h) {
+  if (h === null || h === undefined) return "";
+  return String(h).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// ── Helper: comprehensive header-to-column mapping ───────────
+const EXCEL_HEADER_MAP = {
+  // Identification
+  "NAME OF COMPANY": "company_name",
+  NAME: "company_name",
+  "NAME OF FACILITY": "company_name",
+  "CLIENT ID": "client_id",
+  CONTACT: "telephone",
+  "CONTACT NUMBER": "telephone",
+
+  // Operational
+  SECTOR: "sector",
+  "TYPE OF ACTIVITY (UNDERTAKING)": "type_of_activity",
+  "TYPE OF UNDERTAKING": "type_of_activity",
+  LOCATION: "facility_location",
+  "LOCATION OF COMPANY": "facility_location",
+  DISTRICT: "district",
+  MMDA: "mmda",
+
+  // Geospatial
+  LATITUDE: "latitude",
+  LONGITUDE: "longitude",
+  "GPS CORDINATES": "_gps_combined",
+  "GPS COORDINATES": "_gps_combined",
+
+  // Financial
+  "PROCESSING FEE": "processing_fee",
+  "PROCESSING FEE AMOUNT INVOICED GHS": "processing_fee",
+  "PERMIT FEE": "permit_fee",
+  "PERMIT FEE AMOUNT INVOICED GHS": "permit_fee",
+  "TOTAL AMOUNT INVOICED GHS": "amount_to_pay",
+  "PROCESSING PAID GHS": "processing_paid",
+  "PERMIT PAID GHS": "permit_paid",
+  "TOTAL AMOUNT PAID GHS": "amount_paid",
+  "TOTAL AMOUNT": "total_amount",
+  "ADMINISTRATIVE PENALTY": "administrative_penalty",
+  "INVOICE NUMBER PROCESSING": "invoice_number_processing",
+  "INVOICE NUMBER PERMIT": "invoice_number_permit",
+
+  // Permit
+  "PERMIT NUMBER": "permit_number",
+  "PERMIT STATUS": "status",
+  "PERMIT STATUS- NEW/ RENEWAL": "application_status",
+  "STATUS OF APPLICATION": "application_status",
+  "PERMIT ISSUE DATE": "permit_issue_date",
+  "PERMIT EXPIRY DATE": "permit_expiry_date",
+  "EXPIRY DATE": "permit_expiry_date",
+  "DATE OF ISSUE": "permit_issue_date",
+  "EFFECTIVE DATE": "effective_date",
+
+  // Timeline
+  "DATE OF RECEIPT": "date_of_receipt",
+  DATE: "date_of_receipt",
+  "DATE ISSUED": "date_of_invoice",
+  "PROCESSING PERIOD": "processing_period",
+
+  // Monitoring
+  "TENTATIVE DATE": "tentative_date",
+  GROUP: "group_name",
+  "COORDINATING OFFICER": "coordinating_officer",
+  "ADDITIONAL OFFICERS": "additional_officers",
+  NSPS: "nsps",
+};
+
+// ── Helper: convert Excel serial date to ISO date string ─────
+function excelDateToISO(serial) {
+  if (serial === null || serial === undefined || serial === "") return "";
+  if (typeof serial === "string") {
+    // Already a date string — return as-is if parseable
+    const d = new Date(serial);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    return serial;
+  }
+  if (typeof serial !== "number" || serial < 1) return String(serial);
+  // Excel serial date: days since 1900-01-01 (with the 1900 leap-year bug)
+  const epoch = new Date(1899, 11, 30); // Dec 30, 1899
+  const d = new Date(epoch.getTime() + serial * 86400000);
+  if (isNaN(d.getTime())) return String(serial);
+  return d.toISOString().slice(0, 10);
+}
+
+// ── Date-type columns (to auto-convert Excel serial numbers) ─
+const DATE_COLUMNS = new Set([
+  "date_of_receipt",
+  "date_of_invoice",
+  "permit_issue_date",
+  "permit_expiry_date",
+  "permit_renewal_date",
+  "date_of_processing_fee",
+  "date_of_payment_processing",
+  "date_of_permit_fee",
+  "date_of_payment_permit",
+  "date_of_payment",
+  "date_of_screening",
+  "date_of_draft_receipt",
+  "date_of_revised_receipt",
+  "date_review_sent",
+  "date_of_emp_submission",
+  "date_of_trc",
+  "date_sent_head_office",
+  "date_received_head_office",
+  "tentative_date",
+  "compliance_date",
+  "due_date_reporting",
+  "effective_date",
+]);
+
+// ── Helper: detect the header row in a sheet ─────────────────
+function detectHeaderRow(sheet) {
+  const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+  const maxScan = Math.min(range.e.r, 5); // scan first 6 rows
+  let bestRow = 0,
+    bestScore = 0;
+  for (let r = range.s.r; r <= maxScan; r++) {
+    let score = 0;
+    let nonEmpty = 0;
+    for (let c = range.s.c; c <= Math.min(range.e.c, 25); c++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+      if (!cell) continue;
+      const v = normalizeHeader(cell.v).toUpperCase();
+      nonEmpty++;
+      if (EXCEL_HEADER_MAP[v]) score += 3;
+      else if (/^S\/?N$/i.test(v) || /^NO$/i.test(v)) score += 1;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestRow = r;
+    }
+  }
+  return bestRow;
+}
+
+// ── Helper: parse one sheet into an array of mapped row objects ─
+function parseSheet(sheet, sheetName) {
+  const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+  const headerRow = detectHeaderRow(sheet);
+  const merges = sheet["!merges"] || [];
+
+  // Build a merge lookup: for any cell in a merge region, resolve to the top-left value
+  function getMergeValue(r, c) {
+    for (const m of merges) {
+      if (r >= m.s.r && r <= m.e.r && c >= m.s.c && c <= m.e.c) {
+        // This cell is part of a merged region — return the value from the top-left cell
+        const topLeft = sheet[XLSX.utils.encode_cell({ r: m.s.r, c: m.s.c })];
+        return topLeft || null;
+      }
+    }
+    return undefined; // not in any merge region
+  }
+
+  // Read headers
+  const colMap = {}; // colIndex → db column name
+  const headerNames = {};
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const cell = sheet[XLSX.utils.encode_cell({ r: headerRow, c })];
+    if (!cell) continue;
+    const raw = normalizeHeader(cell.v).toUpperCase();
+    if (/^S\/?N$/i.test(raw) || /^NO$/i.test(raw)) continue; // skip serial number columns
+    const mapped = EXCEL_HEADER_MAP[raw];
+    if (mapped) {
+      colMap[c] = mapped;
+      headerNames[c] = raw;
+    }
+  }
+
+  if (Object.keys(colMap).length === 0) return [];
+
+  // Determine which columns are "substantive" (not just numbers/dates)
+  const substantiveCols = new Set(
+    Object.values(colMap).filter(
+      (c) =>
+        !DATE_COLUMNS.has(c) &&
+        ![
+          "latitude",
+          "longitude",
+          "processing_fee",
+          "permit_fee",
+          "amount_to_pay",
+          "amount_paid",
+          "balance",
+          "total_amount",
+          "processing_paid",
+          "permit_paid",
+          "administrative_penalty",
+        ].includes(c),
+    ),
+  );
+
+  // Read data rows — stop after 50 consecutive empty rows
+  const rows = [];
+  let consecutiveEmpty = 0;
+  for (let r = headerRow + 1; r <= range.e.r; r++) {
+    const row = {};
+    let hasData = false;
+    let substantiveFieldCount = 0;
+    for (const [cStr, dbCol] of Object.entries(colMap)) {
+      const c = parseInt(cStr);
+      let cell = sheet[XLSX.utils.encode_cell({ r, c })];
+
+      // If cell is empty, check if it's part of a merged region
+      if (!cell) {
+        const mergeVal = getMergeValue(r, c);
+        if (mergeVal)
+          cell = mergeVal; // use the merged cell's top-left value
+        else if (mergeVal === null) continue; // merged region but top-left is also empty
+      }
+      if (!cell) continue;
+
+      let val = cell.v;
+      if (val === null || val === undefined) continue;
+
+      // Convert Excel dates
+      if (
+        DATE_COLUMNS.has(dbCol) ||
+        (cell.t === "n" &&
+          typeof val === "number" &&
+          val > 40000 &&
+          val < 60000)
+      ) {
+        val = excelDateToISO(val);
+      }
+
+      // Handle combined GPS coordinates
+      if (dbCol === "_gps_combined") {
+        const gps = String(val)
+          .split(",")
+          .map((s) => s.trim());
+        if (gps.length >= 2) {
+          row["latitude"] = gps[0];
+          row["longitude"] = gps[1];
+          hasData = true;
+          substantiveFieldCount++;
+        }
+        continue;
+      }
+
+      val = String(val).trim();
+      if (val !== "") {
+        row[dbCol] = val;
+        hasData = true;
+        if (substantiveCols.has(dbCol)) substantiveFieldCount++;
+      }
+    }
+
+    // A row is valid if it has a company name, OR at least 2 substantive fields
+    if (hasData && (row.company_name || substantiveFieldCount >= 2)) {
+      rows.push(row);
+      consecutiveEmpty = 0;
+    } else {
+      consecutiveEmpty++;
+      if (consecutiveEmpty >= 50) break; // end of real data
+    }
+  }
+  return rows;
+}
+
+// ── Helper: detect category from filename ────────────────────
+function detectCategory(filename) {
+  const upper = filename.toUpperCase();
+  if (upper.includes("MONITORING")) return "monitoring_records";
+  if (upper.includes("PERMITTED")) return "permitted_applications";
+  if (upper.includes("APPLICATION") || upper.includes("RECEIVED"))
+    return "applications_received";
+  return null;
+}
+
+// ── Helper: detect year from filename ────────────────────────
+function detectYear(filename) {
+  const m = filename.match(/20\d{2}/);
+  return m ? parseInt(m[0]) : null;
+}
+
+// ── Helper: detect quarter from sheet name ───────────────────
+function detectQuarter(sheetName) {
+  const upper = sheetName.toUpperCase().replace("QUATER", "QUARTER");
+  if (upper.includes("1ST") || upper.includes("FIRST") || upper.includes("Q1"))
+    return 1;
+  if (upper.includes("2ND") || upper.includes("SECOND") || upper.includes("Q2"))
+    return 2;
+  if (upper.includes("3RD") || upper.includes("THIRD") || upper.includes("Q3"))
+    return 3;
+  if (upper.includes("4TH") || upper.includes("FOURTH") || upper.includes("Q4"))
+    return 4;
+  return null;
+}
+
+/** Parse uploaded Excel file and return preview data */
+app.post(
+  "/api/records/excel-parse",
+  auth,
+  (req, res, next) => {
+    excelUpload.single("file")(req, res, (err) => {
+      if (err) {
+        if (err.code === "LIMIT_FILE_SIZE")
+          return res.status(413).json({ error: "File exceeds 100 MB limit" });
+        return res.status(400).json({ error: err.message || "Upload failed" });
+      }
+      next();
+    });
+  },
+  (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+      const filePath = req.file.path;
+      const originalName = req.file.originalname;
+
+      const workbook = XLSX.readFile(filePath, {
+        cellDates: false,
+        cellNF: false,
+        cellText: false,
+      });
+      const detectedCategory = detectCategory(originalName);
+      const detectedYear = detectYear(originalName);
+
+      const sheets = [];
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        const detectedQuarter = detectQuarter(sheetName);
+        const rows = parseSheet(sheet, sheetName);
+
+        // Get column names found in this sheet
+        const columnsFound = new Set();
+        rows.forEach((r) => Object.keys(r).forEach((k) => columnsFound.add(k)));
+
+        // Build column mapping info for display
+        const headerRow = detectHeaderRow(sheet);
+        const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+        const mappedHeaders = [];
+        for (let c = range.s.c; c <= range.e.c; c++) {
+          const cell = sheet[XLSX.utils.encode_cell({ r: headerRow, c })];
+          if (!cell) continue;
+          const raw = normalizeHeader(cell.v).toUpperCase();
+          const mapped = EXCEL_HEADER_MAP[raw];
+          if (mapped)
+            mappedHeaders.push({ excel: normalizeHeader(cell.v), db: mapped });
+        }
+
+        sheets.push({
+          sheetName,
+          detectedQuarter,
+          rowCount: rows.length,
+          columnsFound: [...columnsFound],
+          mappedHeaders,
+          preview: rows.slice(0, 10), // first 10 rows for preview
+          allRows: rows,
+        });
+      }
+
+      // Store parsed data in temp file (avoids sending all rows to browser and back)
+      const tempId =
+        Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      const tempPath = path.join(excelTempDir, tempId + ".json");
+      const tempData = sheets.map((s) => ({
+        sheetName: s.sheetName,
+        allRows: s.allRows,
+      }));
+      fs.writeFileSync(tempPath, JSON.stringify(tempData));
+
+      // Clean up uploaded file
+      try {
+        fs.unlinkSync(filePath);
+      } catch (e) {
+        /* ignore */
+      }
+
+      // Return summary (no allRows) to keep response lightweight
+      const responsesheets = sheets.map(({ allRows, ...rest }) => rest);
+
+      res.json({
+        filename: originalName,
+        detectedCategory,
+        detectedYear,
+        tempId,
+        sheets: responsesheets,
+      });
+    } catch (e) {
+      // Clean up temp file on error
+      if (req.file?.path)
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (_) {}
+      res.status(500).json({ error: e.message });
+    }
+  },
+);
+
+/** Fetch all rows from a temp Excel parse session for review/editing */
+app.get("/api/records/excel-temp/:tempId", auth, (req, res) => {
+  try {
+    const safe = String(req.params.tempId).replace(/[^a-z0-9]/gi, "");
+    const tempPath = path.join(excelTempDir, safe + ".json");
+    if (!fs.existsSync(tempPath))
+      return res
+        .status(404)
+        .json({ error: "Session expired. Please re-upload the Excel file." });
+    const sheets = JSON.parse(fs.readFileSync(tempPath, "utf8"));
+    res.json({ sheets });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** Import parsed Excel data into the database */
+app.post("/api/records/excel-import", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const { category, year, sheets: sheetConfig, ffillCols, tempId } = req.body;
+    if (!RECORD_CATEGORIES.includes(category))
+      return res.status(400).json({ error: "Invalid category" });
+    if (!year || year < 2000 || year > 2100)
+      return res.status(400).json({ error: "Invalid year" });
+    if (!Array.isArray(sheetConfig) || sheetConfig.length === 0)
+      return res.status(400).json({ error: "No sheets to import" });
+
+    // Load parsed rows from temp file
+    let storedSheets = null;
+    if (tempId) {
+      const safe = String(tempId).replace(/[^a-z0-9]/gi, "");
+      const tempPath = path.join(excelTempDir, safe + ".json");
+      if (!fs.existsSync(tempPath))
+        return res
+          .status(400)
+          .json({ error: "Session expired. Please re-upload the Excel file." });
+      storedSheets = JSON.parse(fs.readFileSync(tempPath, "utf8"));
+    }
+
+    const validCols = db
+      .all('PRAGMA table_info("records_entries")')
+      .map((c) => c.name)
+      .filter((c) => !["id", "created_at", "updated_at"].includes(c));
+
+    const ffCols = ffillCols || [
+      "tentative_date",
+      "group_name",
+      "coordinating_officer",
+    ];
+    let totalInserted = 0;
+    const sheetResults = [];
+
+    for (const sheetData of sheetConfig) {
+      const quarter = sheetData.quarter;
+      if (!quarter || quarter < 1 || quarter > 4) {
+        sheetResults.push({
+          sheetName: sheetData.sheetName,
+          error: "Invalid quarter",
+          inserted: 0,
+        });
+        continue;
+      }
+
+      // Get rows from temp file or from request body
+      let importRows = sheetData.rows || [];
+      if (storedSheets) {
+        const stored = storedSheets.find(
+          (s) => s.sheetName === sheetData.sheetName,
+        );
+        if (stored) importRows = stored.allRows || [];
+      }
+
+      if (importRows.length === 0) {
+        sheetResults.push({
+          sheetName: sheetData.sheetName,
+          error: "No data rows",
+          inserted: 0,
+        });
+        continue;
+      }
+
+      // Forward-fill logic
+      const lastVals = {};
+      const processedRows = importRows.map((row) => {
+        const processed = { ...row };
+        for (const col of ffCols) {
+          if (!processed[col] || String(processed[col]).trim() === "") {
+            if (lastVals[col]) {
+              processed[col] = lastVals[col];
+              processed.is_forward_filled =
+                (processed.is_forward_filled || "") + col + ",";
+            }
+          } else {
+            lastVals[col] = processed[col];
+          }
+        }
+        return processed;
+      });
+
+      let inserted = 0;
+      for (const row of processedRows) {
+        const data = { category, year, quarter, created_by: req.user.username };
+        for (const [k, v] of Object.entries(row)) {
+          if (validCols.includes(k)) data[k] = v === "" ? null : v;
+        }
+        const cols = Object.keys(data);
+        const vals = cols.map((c) => data[c]);
+        db.run(
+          `INSERT INTO records_entries (${cols.map((c) => `"${c}"`).join(",")}) VALUES (${cols.map(() => "?").join(",")})`,
+          vals,
+        );
+        inserted++;
+      }
+
+      totalInserted += inserted;
+      sheetResults.push({ sheetName: sheetData.sheetName, quarter, inserted });
+    }
+
+    // Ensure year exists in records_years
+    db.run(
+      "INSERT OR IGNORE INTO records_years (category, year, created_by) VALUES (?, ?, ?)",
+      [category, year, req.user.username],
+    );
+    saveToDisk();
+
+    // Clean up temp file after successful import
+    if (tempId) {
+      const safe = String(tempId).replace(/[^a-z0-9]/gi, "");
+      const tempPath = path.join(excelTempDir, safe + ".json");
+      try {
+        fs.unlinkSync(tempPath);
+      } catch (_) {}
+    }
+
+    logActivity(
+      req,
+      "excel_import_records",
+      category,
+      `${year}: ${totalInserted} entries from Excel`,
+    );
+    res.json({ ok: true, totalInserted, sheetResults });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** Scan workspace for Excel files and auto-import them */
+app.post("/api/records/excel-scan", auth, (req, res) => {
+  try {
+    const xlsxFiles = fs
+      .readdirSync(APP_ROOT)
+      .filter((f) => f.toLowerCase().endsWith(".xlsx") && !f.startsWith("~$"));
+
+    const results = [];
+    for (const filename of xlsxFiles) {
+      const fullPath = path.join(APP_ROOT, filename);
+      const cat = detectCategory(filename);
+      const year = detectYear(filename);
+      if (!cat || !year) {
+        results.push({
+          filename,
+          error: "Could not detect category or year",
+          inserted: 0,
+        });
+        continue;
+      }
+
+      const workbook = XLSX.readFile(fullPath, {
+        cellDates: false,
+        cellNF: false,
+        cellText: false,
+      });
+      let fileInserted = 0;
+      const sheetResults = [];
+
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        const quarter = detectQuarter(sheetName);
+        if (!quarter) {
+          sheetResults.push({
+            sheetName,
+            error: "Could not detect quarter",
+            inserted: 0,
+          });
+          continue;
+        }
+
+        const rows = parseSheet(sheet, sheetName);
+        if (rows.length === 0) {
+          sheetResults.push({ sheetName, quarter, inserted: 0 });
+          continue;
+        }
+
+        const db = getDb();
+        const validCols = db
+          .all('PRAGMA table_info("records_entries")')
+          .map((c) => c.name)
+          .filter((c) => !["id", "created_at", "updated_at"].includes(c));
+
+        // Forward-fill for monitoring data
+        const ffCols = ["tentative_date", "group_name", "coordinating_officer"];
+        const lastVals = {};
+        const processedRows = rows.map((row) => {
+          const processed = { ...row };
+          for (const col of ffCols) {
+            if (!processed[col] || String(processed[col]).trim() === "") {
+              if (lastVals[col]) {
+                processed[col] = lastVals[col];
+                processed.is_forward_filled =
+                  (processed.is_forward_filled || "") + col + ",";
+              }
+            } else {
+              lastVals[col] = processed[col];
+            }
+          }
+          return processed;
+        });
+
+        let inserted = 0;
+        for (const row of processedRows) {
+          const data = {
+            category: cat,
+            year,
+            quarter,
+            created_by: req.user.username,
+          };
+          for (const [k, v] of Object.entries(row)) {
+            if (validCols.includes(k)) data[k] = v === "" ? null : v;
+          }
+          const cols = Object.keys(data);
+          const vals = cols.map((c) => data[c]);
+          db.run(
+            `INSERT INTO records_entries (${cols.map((c) => `"${c}"`).join(",")}) VALUES (${cols.map(() => "?").join(",")})`,
+            vals,
+          );
+          inserted++;
+        }
+
+        fileInserted += inserted;
+        sheetResults.push({ sheetName, quarter, inserted });
+      }
+
+      // Ensure year exists
+      const db = getDb();
+      db.run(
+        "INSERT OR IGNORE INTO records_years (category, year, created_by) VALUES (?, ?, ?)",
+        [cat, year, req.user.username],
+      );
+
+      results.push({
+        filename,
+        category: cat,
+        year,
+        totalInserted: fileInserted,
+        sheets: sheetResults,
+      });
+    }
+
+    saveToDisk();
+    const grandTotal = results.reduce((s, r) => s + (r.totalInserted || 0), 0);
+    logActivity(
+      req,
+      "excel_scan_import",
+      "records",
+      `${xlsxFiles.length} files, ${grandTotal} entries`,
+    );
+    res.json({ ok: true, files: results, grandTotal });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** Admin: Get record count stats per category/year/quarter */
+app.get("/api/records/admin/stats", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const stats = db.all(`
+      SELECT category, year, quarter, COUNT(*) as cnt,
+        MIN(created_at) as first_import, MAX(created_at) as last_import
+      FROM records_entries
+      GROUP BY category, year, quarter
+      ORDER BY category, year, quarter
+    `);
+    const total = db.get("SELECT COUNT(*) as cnt FROM records_entries");
+    res.json({ stats, total: total?.cnt || 0 });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** Admin: Bulk delete records by category/year/quarter */
+app.post("/api/records/admin/bulk-delete", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const { category, year, quarter } = req.body;
+    let where = [];
+    let params = [];
+    if (category) {
+      where.push("category = ?");
+      params.push(category);
+    }
+    if (year) {
+      where.push("year = ?");
+      params.push(parseInt(year));
+    }
+    if (quarter) {
+      where.push("quarter = ?");
+      params.push(parseInt(quarter));
+    }
+    if (where.length === 0)
+      return res
+        .status(400)
+        .json({ error: "Must specify at least category, year, or quarter" });
+    const count = db.get(
+      `SELECT COUNT(*) as cnt FROM records_entries WHERE ${where.join(" AND ")}`,
+      params,
+    );
+    db.run(`DELETE FROM records_entries WHERE ${where.join(" AND ")}`, params);
+    saveToDisk();
+    logActivity(
+      req,
+      "bulk_delete_records",
+      category || "all",
+      `${count?.cnt || 0} entries deleted`,
+    );
+    res.json({ ok: true, deleted: count?.cnt || 0 });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** Admin: Delete selected record IDs */
+app.post("/api/records/admin/delete-selected", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0)
+      return res.status(400).json({ error: "No IDs specified" });
+    const placeholders = ids.map(() => "?").join(",");
+    db.run(
+      `DELETE FROM records_entries WHERE id IN (${placeholders})`,
+      ids.map(Number),
+    );
+    saveToDisk();
+    logActivity(
+      req,
+      "delete_selected_records",
+      "records",
+      `${ids.length} entries`,
+    );
+    res.json({ ok: true, deleted: ids.length });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -5988,8 +6903,8 @@ async function start() {
       "scanlog",
       "permitfilter",
       "enrichment",
-      "records",
-      "recordsAnalytics",
+      // "records",
+      // "recordsAnalytics",
     ];
     /* Seed every default page for every non-admin user.
        INSERT OR IGNORE keeps existing rows untouched. */

@@ -38,17 +38,30 @@ const state = {
   recQuarter: null,
   recExpandedNodes: {},
   recSelectedEntryId: null,
-  recInspectorMode: 'detail', // 'detail' | 'add' | 'edit'
-  recSearchTerm: '',
+  recInspectorMode: "detail", // 'detail' | 'add' | 'edit'
+  recSearchTerm: "",
 };
 const FORM_SECTIONS = {};
 const REC_CATEGORIES = [
-  { key: 'applications_received', label: 'Applications Received', icon: '📥' },
-  { key: 'permitted_applications', label: 'Permitted Applications', icon: '✅' },
-  { key: 'monitoring_records', label: 'Monitoring Records', icon: '📊' },
+  { key: "applications_received", label: "Applications Received", icon: "📥" },
+  {
+    key: "permitted_applications",
+    label: "Permitted Applications",
+    icon: "✅",
+  },
+  { key: "monitoring_records", label: "Monitoring Records", icon: "📊" },
 ];
-const REC_CATEGORY_LABELS = { applications_received: 'Applications Received', permitted_applications: 'Permitted Applications', monitoring_records: 'Monitoring Records' };
-const REC_QUARTER_LABELS = { 1: '1st Quarter', 2: '2nd Quarter', 3: '3rd Quarter', 4: '4th Quarter' };
+const REC_CATEGORY_LABELS = {
+  applications_received: "Applications Received",
+  permitted_applications: "Permitted Applications",
+  monitoring_records: "Monitoring Records",
+};
+const REC_QUARTER_LABELS = {
+  1: "1st Quarter",
+  2: "2nd Quarter",
+  3: "3rd Quarter",
+  4: "4th Quarter",
+};
 let searchTimer = null;
 let sidebarSearchTimer = null;
 let activitySearchTimer = null;
@@ -526,13 +539,14 @@ function showApp() {
   document.getElementById("status-user").textContent =
     state.user.fullName || state.user.username;
   document.getElementById("status-role").textContent = state.user.role;
-  // Reset admin-only button visibility
+  // Reset ALL activity button visibility (undo any hiding from prior session)
+  document.querySelectorAll(".activity-btn[data-view]").forEach((btn) => {
+    btn.style.display = "";
+  });
+  // Then hide admin-only buttons for non-admin
   const actBtn = document.getElementById("activity-nav-btn");
   const usrBtn = document.getElementById("users-nav-btn");
-  if (state.user.role === "admin") {
-    if (actBtn) actBtn.style.display = "";
-    if (usrBtn) usrBtn.style.display = "";
-  } else {
+  if (state.user.role !== "admin") {
     if (actBtn) actBtn.style.display = "none";
     if (usrBtn) usrBtn.style.display = "none";
   }
@@ -831,8 +845,8 @@ function switchView(view, context) {
         "reports",
         "scanlog",
         "permitfilter",
-        "records",
-        "recordsAnalytics",
+        // "records",
+        // "recordsAnalytics",
       ].find((p) => featureCan("page", p));
       if (firstAllowed && firstAllowed !== view) {
         switchView(firstAllowed);
@@ -868,8 +882,8 @@ function switchView(view, context) {
     scanlog: "SCAN LOG",
     permitfilter: "PERMIT FILTER",
     enrichment: "DATA ENRICHMENT",
-    records: "RECORDS EXPLORER",
-    recordsAnalytics: "RECORDS ANALYTICS",
+    // records: "RECORDS EXPLORER",
+    // recordsAnalytics: "RECORDS ANALYTICS",
     activity: "ACTIVITY LOG",
     users: "USERS",
     settings: "SETTINGS",
@@ -898,8 +912,8 @@ function switchView(view, context) {
     scanlog: renderScanLogView,
     permitfilter: renderPermitFilterView,
     enrichment: renderEnrichmentView,
-    records: renderRecordsView,
-    recordsAnalytics: renderRecordsAnalyticsView,
+    // records: renderRecordsView,
+    // recordsAnalytics: renderRecordsAnalyticsView,
     activity: renderActivityView,
     users: renderUsersView,
     settings: renderSettingsView,
@@ -1873,6 +1887,7 @@ const PERMIT_FIELD_LABELS = {
   PermitFee: "Permit Fee",
   DateOfIssueOfPermitFee: "Date of Issue of Permit Fee",
   DateOfPaymentOfPermitFee: "Date of Payment of Permit Fee",
+  PenaltyFee: "Penalty Fee",
   InvoiceNumber: "Invoice Number",
   DateOfIssueOfInvioce: "Date of Issue of Invoice",
   AmountToPay: "Amount to Pay",
@@ -2206,7 +2221,7 @@ function showPermitRecordModal(row, id) {
       </div>
 
       <!-- Fees -->
-      <div class="pm-card" data-pm-section="fees" data-pm-fields="ProcessingFee,DateOfPaymentOfProcessingFee,PermitFee,DateOfPaymentOfPermitFee" oncontextmenu="showPmSectionMenu(event,this)">
+      <div class="pm-card" data-pm-section="fees" data-pm-fields="ProcessingFee,DateOfPaymentOfProcessingFee,PermitFee,DateOfPaymentOfPermitFee,PenaltyFee" oncontextmenu="showPmSectionMenu(event,this)">
         <div class="pm-card-title">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           Fees
@@ -2219,6 +2234,7 @@ function showPermitRecordModal(row, id) {
             </div>
             <div class="pm-field"><span class="pm-label">Payment (Processing)</span><span class="pm-value">${fv("DateOfPaymentOfProcessingFee")}</span></div>
             <div class="pm-field"><span class="pm-label">Payment (Permit)</span><span class="pm-value">${fv("DateOfPaymentOfPermitFee")}</span></div>
+            <div class="pm-field"><span class="pm-label">Penalty Fee</span><span class="pm-value">${v("PenaltyFee")}</span></div>
           </div>
         </div>
       </div>
@@ -2857,6 +2873,85 @@ async function loadDigitizedData(table, recordId, row) {
   }
 }
 
+/** Load documents into the edit modal's documents container */
+async function loadEditDocuments(table, id, row) {
+  const container = document.getElementById("edit-documents-container");
+  if (!container) return;
+  try {
+    const [attachments, digiResult] = await Promise.all([
+      loadAttachments(table, id),
+      loadDigitizedData(table, id, row),
+    ]);
+    const totalCount = attachments.length + (digiResult ? digiResult.links.length : 0);
+    let html = "";
+    if (attachments.length > 0) {
+      html += '<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:8px">📎 Uploaded Attachments</div>';
+      html += '<div class="attachment-list">';
+      attachments.forEach((a) => { html += renderAttachmentItemHTML(a, table, id, false); });
+      html += "</div></div>";
+    }
+    if (digiResult && digiResult.links.length > 0) {
+      html += '<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:8px">🗂️ Linked Digitized Files</div>';
+      html += '<div class="attachment-list">';
+      digiResult.links.forEach((link) => { html += renderDigiLinkItemHTML(link, table, id, false); });
+      html += "</div></div>";
+    }
+    // Upload dropzone
+    html += `<div class="att-dropzone" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="event.preventDefault();this.classList.remove('dragover');handleEditAttDrop(event,'${table}',${id})">
+      <div class="att-dropzone-text">
+        <span style="font-size:24px">📎</span>
+        <span>Drag & drop files or</span>
+        <button class="btn btn-sm" onclick="document.getElementById('edit-att-upload-input').click()">Browse Files</button>
+      </div>
+      <input type="file" id="edit-att-upload-input" multiple style="display:none" onchange="uploadEditAttachments('${table}',${id})">
+    </div>`;
+    if (totalCount === 0) {
+      html = `<div style="text-align:center;color:var(--text-muted);font-size:13px;padding:12px 0;margin-bottom:12px">No documents attached</div>` + html.slice(html.indexOf('<div class="att-dropzone"'));
+    }
+    container.innerHTML = html;
+    loadAttachmentThumbnails(container);
+  } catch (err) {
+    container.innerHTML = `<div style="padding:12px;color:var(--text-muted);font-size:12px">Error loading documents.</div>`;
+  }
+}
+
+function handleEditAttDrop(event, table, recordId) {
+  const files = event.dataTransfer.files;
+  if (!files.length) return;
+  const formData = new FormData();
+  for (const f of files) formData.append("files", f);
+  const headers = {};
+  if (state.token) headers["Authorization"] = "Bearer " + state.token;
+  fetch(`/api/attachments/${table}/${recordId}`, { method: "POST", headers, body: formData })
+    .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.error);
+      toast(`${data.files.length} file(s) uploaded`, "success");
+      api(`/api/data/${table}/${recordId}`).then((row) => loadEditDocuments(table, recordId, row));
+    })
+    .catch((err) => toast(err.message, "error"));
+}
+
+async function uploadEditAttachments(table, recordId) {
+  const input = document.getElementById("edit-att-upload-input");
+  if (!input || !input.files.length) return;
+  const formData = new FormData();
+  for (const f of input.files) formData.append("files", f);
+  const headers = {};
+  if (state.token) headers["Authorization"] = "Bearer " + state.token;
+  try {
+    const res = await fetch(`/api/attachments/${table}/${recordId}`, { method: "POST", headers, body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    toast(`${data.files.length} file(s) uploaded`, "success");
+    const row = await api(`/api/data/${table}/${recordId}`);
+    loadEditDocuments(table, recordId, row);
+  } catch (err) {
+    toast(err.message, "error");
+  }
+  input.value = "";
+}
+
 /** Build HTML for a single attachment item with thumbnail + right-click */
 function renderAttachmentItemHTML(a, table, recordId, readOnly) {
   const sizeStr =
@@ -3013,21 +3108,9 @@ function showAttContextMenu(
       items += `<div class="att-ctx-item" onclick="previewAttachment(${id},'${escHtml(filename)}');this.closest('.att-ctx-menu').remove()">👁️ Preview</div>`;
     }
   }
-  if (kind === "digi") {
-    items += `<div class="att-ctx-item" onclick="downloadDigitizedFile('${escHtml(relPath || "")}');this.closest('.att-ctx-menu').remove()">⬇️ Download</div>`;
-  } else {
-    items += `<div class="att-ctx-item" onclick="downloadAttachment(${id});this.closest('.att-ctx-menu').remove()">⬇️ Download</div>`;
-  }
-  if (canPreview && kind !== "digi") {
-    items += `<div class="att-ctx-item" onclick="openAttachmentNewTab(${id});this.closest('.att-ctx-menu').remove()">🔗 Open in New Tab</div>`;
-  }
-  if (kind !== "digi") {
-    items += `<div class="att-ctx-item" onclick="copyAttachmentInfo(${id},'${escHtml(filename)}');this.closest('.att-ctx-menu').remove()">📋 Copy File Name</div>`;
-  }
   if (canModify) {
-    items += '<div class="att-ctx-sep"></div>';
     if (kind === "digi") {
-      items += `<div class="att-ctx-item att-ctx-danger" onclick="unlinkDigitizedFile(${id},'${table}',${recordId});this.closest('.att-ctx-menu').remove()">✕ Remove Link</div>`;
+      items += `<div class="att-ctx-item att-ctx-danger" onclick="unlinkDigitizedFile(${id},'${table}',${recordId});this.closest('.att-ctx-menu').remove()">🗑️ Remove Link</div>`;
     } else {
       items += `<div class="att-ctx-item att-ctx-danger" onclick="deleteAttachment(${id},'${table}',${recordId});this.closest('.att-ctx-menu').remove()">🗑️ Delete File</div>`;
     }
@@ -3451,11 +3534,17 @@ async function showEditRecordModal(table, id) {
             <div class="pm-edit-fields">${rf("ApplicationStatusII")}${rf("ApplicationStatus")}</div>
           </div>
           <div class="pm-card"><div class="pm-card-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Fees</div>
-            <div class="pm-edit-fields">${rf("ProcessingFee")}${rf("DateOfPaymentOfProcessingFee")}${rf("PermitFee")}${rf("DateOfPaymentOfPermitFee")}</div>
+            <div class="pm-edit-fields">${rf("ProcessingFee")}${rf("DateOfPaymentOfProcessingFee")}${rf("PermitFee")}${rf("DateOfPaymentOfPermitFee")}${rf("PenaltyFee")}</div>
           </div>
           <div class="pm-card"><div class="pm-card-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Compliance</div>
             <div class="pm-edit-fields">${rf("Compliance")}${rf("ComplianceDate")}</div>
           </div>
+        </div>
+      </div>
+      </div>
+      <div class="pm-edit-documents">
+        <div class="pm-card" style="margin:0 20px 16px"><div class="pm-card-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.49"/></svg>Documents &amp; Files</div>
+          <div id="edit-documents-container"><div style="padding:12px;color:var(--text-muted)">Loading documents...</div></div>
         </div>
       </div>
       <div class="pm-footer">
@@ -3466,6 +3555,7 @@ async function showEditRecordModal(table, id) {
       </div>`;
       modal.innerHTML = html;
       document.body.appendChild(modal);
+      loadEditDocuments('PERMIT', id, row);
       return;
     }
 
@@ -3479,9 +3569,11 @@ async function showEditRecordModal(table, id) {
       });
       html += "</div></div>";
     });
+    html += `<div class="form-section"><div class="form-section-title">📎 Documents & Files</div><div id="edit-documents-container" style="padding:8px"><div style="color:var(--text-muted)">Loading documents...</div></div></div>`;
     html += `</div><div class="modal-footer"><button class="btn btn-primary btn-sm" onclick="saveEditRecord('${table}',${id})">💾 Save Changes</button><button class="btn btn-sm" onclick="this.closest('.modal-overlay').remove()">Cancel</button></div></div>`;
     modal.innerHTML = html;
     document.body.appendChild(modal);
+    loadEditDocuments(table, id, row);
   } catch (err) {
     toast("Failed to load record: " + err.message, "error");
   } finally {
@@ -3745,6 +3837,10 @@ async function runQuery(key, params) {
     const fields = getCardFields(table);
     const cols = Object.keys(data.rows[0]);
 
+    // Store rows for export
+    state._lastQueryRows = data.rows;
+    state._lastQueryName = data.queryName || q?.name || key;
+
     let html = `<div class="search-bar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <span class="search-info">${data.total.toLocaleString()} result${data.total !== 1 ? "s" : ""} · ${data.queryName || q?.name || key}</span>
       ${
@@ -3753,6 +3849,7 @@ async function runQuery(key, params) {
         style="flex:1;min-width:180px;max-width:350px;padding:6px 12px;font-size:13px;border-radius:var(--radius-md);border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-white)">`
           : ""
       }
+      <button class="btn btn-sm" onclick="exportQueryResultsToExcel()" title="Export to Excel">📥 Export Excel</button>
     </div>`;
 
     // For aggregate queries, show as summary cards
@@ -3834,6 +3931,24 @@ function filterQueryCards(term) {
     info.textContent = t
       ? `${visible} of ${cards.length} shown${suffix}`
       : orig;
+  }
+}
+
+function exportQueryResultsToExcel() {
+  const rows = state._lastQueryRows;
+  if (!rows || rows.length === 0) {
+    toast("No results to export", "error");
+    return;
+  }
+  try {
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    const name = (state._lastQueryName || "Query Results").substring(0, 31);
+    XLSX.utils.book_append_sheet(wb, ws, name);
+    XLSX.writeFile(wb, `${state._lastQueryName || "Query_Results"}.xlsx`);
+    toast("Excel file exported successfully", "success");
+  } catch (err) {
+    toast("Export failed: " + err.message, "error");
   }
 }
 
@@ -6570,13 +6685,13 @@ async function importEmployeesDialog() {
   input.click();
 }
 
-function showSettingsDataMgmt() {
+async function showSettingsDataMgmt() {
   updateSettingsSidebar("Data Management");
   const content = document.getElementById("content");
   content.innerHTML = `
     <div class="settings-section">
       <h3>🗄️ Data Management</h3>
-      <p style="color:var(--text-dim);font-size:13px;margin-bottom:20px">Manage the application's data — clear existing records or import new data from a Microsoft Access file.</p>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:20px">Manage the application's data — clear existing records, import records from Excel, or import new data from a Microsoft Access file.</p>
     </div>
 
     <div class="settings-section" style="border:1px solid var(--border);border-radius:var(--radius-md);padding:20px;">
@@ -6593,6 +6708,8 @@ function showSettingsDataMgmt() {
       <div id="import-preview-container"></div>
       <div id="upload-results" style="display:none"></div>
     </div>
+
+    <!-- Records Data Management section removed (Records pages disabled) -->
 
     <div class="settings-section" style="border:1px solid var(--red);border-radius:var(--radius-md);padding:20px;margin-top:20px;">
       <h3 style="color:var(--red)">⚠️ Clear All Data</h3>
@@ -6681,12 +6798,20 @@ async function showSettingsBackup() {
       <button class="btn btn-primary btn-sm" onclick="saveBackupSchedule()">Save Schedule</button>
     </div>`;
 
-    // Manual Backup
+    // Manual Backup — Main Database
     html += `<div class="settings-section" style="margin-top:20px">
-      <h3>💾 Manual Backup</h3>
-      <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">Create an immediate backup of the entire database and all attached files.</p>
-      <button class="btn btn-primary btn-sm" onclick="createManualBackup()">🔄 Create Backup Now</button>
+      <h3>💾 Main Database Backup</h3>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">Create an immediate backup of the <strong>main database</strong> (all tables — permits, movements, waste, stores, users, etc.) and all attached files. Saved as a <strong>ZIP archive</strong> containing the database file and uploaded documents.</p>
+      <button class="btn btn-primary btn-sm" onclick="createManualBackup()">🔄 Create Database Backup Now</button>
       <div id="backup-progress" style="display:none;margin-top:12px"><div class="loading">Creating backup...</div></div>
+    </div>`;
+
+    // Records Entries Excel Backup
+    html += `<div class="settings-section" style="margin-top:20px;border:1px solid var(--accent);border-radius:var(--radius-md);padding:20px">
+      <h3>📊 Records Entries Backup</h3>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">Export all Records Entries data (Applications Received, Permitted Applications, Monitoring Records) as an <strong>Excel workbook (.xlsx)</strong>. Each record type will be on a separate sheet.</p>
+      <button class="btn btn-primary btn-sm" onclick="downloadRecordsExcelBackup()">📥 Download Records Backup (Excel)</button>
+      <div id="records-backup-progress" style="display:none;margin-top:12px"><div class="loading">Generating Excel file...</div></div>
     </div>`;
 
     // Backup History
@@ -6858,6 +6983,36 @@ async function loadBackupList() {
 
 function downloadBackup(filename) {
   window.open(`/api/backup/download/${filename}`, "_blank");
+}
+
+/** Download Records Entries as an Excel backup file */
+async function downloadRecordsExcelBackup() {
+  const prog = document.getElementById("records-backup-progress");
+  if (prog) prog.style.display = "";
+  try {
+    const resp = await fetch("/api/records/backup-excel", {
+      headers: { Authorization: "Bearer " + state.token },
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || "Backup failed");
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const disposition = resp.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    a.download = match ? match[1] : "Records_Backup.xlsx";
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("Records backup downloaded", "success");
+    if (prog) prog.style.display = "none";
+  } catch (err) {
+    showToast("Records backup failed: " + err.message, "error");
+    if (prog)
+      prog.innerHTML = `<div style="color:var(--red);font-size:13px">\u274C ${err.message}</div>`;
+  }
 }
 
 async function restoreBackup(filename, driveId, location) {
@@ -7294,6 +7449,7 @@ function toast(msg, type = "info") {
     setTimeout(() => el.remove(), 300);
   }, 3500);
 }
+const showToast = toast;
 
 // ── Helpers ──────────────────────────────────────────────────
 function escHtml(s) {
@@ -7849,7 +8005,7 @@ function previewDigitizedFile(relativePath, filename) {
         content = `<iframe src="${blobUrl}" style="width:100%;height:80vh;border:none;border-radius:8px"></iframe>`;
       }
       modal.innerHTML = `<div class="modal" style="max-width:900px">
-        <div class="modal-header"><h3>Preview: ${escHtml(filename)}</h3><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+        <div class="modal-header"><h3>Preview: ${escHtml(filename)}</h3><div style="display:flex;align-items:center;gap:8px"><button class="btn btn-sm" onclick="downloadDigitizedFile('${escHtml(relativePath)}')" title="Download">⬇️ Download</button><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div></div>
         <div style="padding:16px">${content}</div>
       </div>`;
       document.body.appendChild(modal);
@@ -8109,7 +8265,7 @@ async function previewAttachment(id, filename) {
       content = `<iframe src="${blobUrl}" style="width:100%;height:80vh;border:none;border-radius:8px"></iframe>`;
     }
     modal.innerHTML = `<div class="modal" style="max-width:900px">
-      <div class="modal-header"><h3>Preview: ${escHtml(filename)}</h3><button class="modal-close" onclick="cleanupPreviewModal(this.closest('.modal-overlay'))">✕</button></div>
+      <div class="modal-header"><h3>Preview: ${escHtml(filename)}</h3><div style="display:flex;align-items:center;gap:8px"><button class="btn btn-sm" onclick="downloadAttachment(${id})" title="Download">⬇️ Download</button><button class="modal-close" onclick="cleanupPreviewModal(this.closest('.modal-overlay'))">✕</button></div></div>
       <div style="padding:16px">${content}</div>
     </div>`;
   } catch (err) {
@@ -8250,10 +8406,16 @@ function downloadAttachment(id) {
     headers: { Authorization: "Bearer " + state.token },
   })
     .then((r) => {
+      if (!r.ok)
+        return r.json().then((d) => {
+          throw new Error(d.error || "Download failed");
+        });
       const disp = r.headers.get("content-disposition");
-      const name = disp
-        ? disp.split("filename=")[1]?.replace(/"/g, "")
-        : "download";
+      let name = "download";
+      if (disp) {
+        const match = disp.match(/filename[^;=\n]*=\s*(?:"([^"]*)"|([^;\n]*))/);
+        if (match) name = match[1] || match[2] || "download";
+      }
       return r.blob().then((blob) => ({ blob, name }));
     })
     .then(({ blob, name }) => {
@@ -8261,7 +8423,9 @@ function downloadAttachment(id) {
       const a = document.createElement("a");
       a.href = url;
       a.download = name;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
     })
     .catch((err) => toast("Download failed: " + err.message, "error"));
@@ -8500,7 +8664,7 @@ async function addScanLogEntry() {
   const jurisdictions = opts.PERMIT?.Jurisdiction || [];
   const sectors = opts.PERMIT?.ClassificationOfUndertaking || [];
 
-  const result = await showFormModal({
+  const result = await showScanLogFormModal({
     title: "New Scan Log Entry",
     icon: "📋",
     fields: [
@@ -8510,36 +8674,13 @@ async function addScanLogEntry() {
         type: "date",
         value: new Date().toISOString().slice(0, 10),
         required: true,
+        group: "info",
       },
       {
         key: "file_number",
         label: "File Number",
         placeholder: "e.g. EPA/WR/123",
-      },
-      {
-        key: "company_name",
-        label: "Company Name",
-        placeholder: "Enter company name",
-        required: true,
-      },
-      {
-        key: "sector",
-        label: "Sector",
-        type: "select",
-        options: ["", ...sectors],
-      },
-      { key: "location", label: "Location", placeholder: "Facility location" },
-      {
-        key: "district",
-        label: "District",
-        type: "select",
-        options: ["", ...districts],
-      },
-      {
-        key: "jurisdiction",
-        label: "Jurisdiction",
-        type: "select",
-        options: ["", ...jurisdictions],
+        group: "info",
       },
       {
         key: "scan_status",
@@ -8550,19 +8691,65 @@ async function addScanLogEntry() {
           { value: "Update", label: "Update" },
         ],
         value: "New",
+        group: "info",
       },
-      { key: "last_folio", label: "Last Folio", type: "number", value: "0" },
+      {
+        key: "company_name",
+        label: "Company Name",
+        placeholder: "Enter company name",
+        required: true,
+        group: "company",
+        wide: true,
+      },
+      {
+        key: "sector",
+        label: "Sector",
+        type: "select",
+        options: ["", ...sectors],
+        group: "company",
+        wide: true,
+      },
+      {
+        key: "location",
+        label: "Location",
+        placeholder: "Facility location",
+        group: "location",
+      },
+      {
+        key: "district",
+        label: "District",
+        type: "select",
+        options: ["", ...districts],
+        group: "location",
+      },
+      {
+        key: "jurisdiction",
+        label: "Jurisdiction",
+        type: "select",
+        options: ["", ...jurisdictions],
+        group: "location",
+      },
+      {
+        key: "last_folio",
+        label: "Last Folio",
+        type: "number",
+        value: "0",
+        group: "folio",
+      },
       {
         key: "current_folio",
         label: "Current Folio",
         type: "number",
         value: "0",
+        group: "folio",
       },
       {
         key: "notes",
         label: "Notes",
         type: "textarea",
         placeholder: "Additional notes...",
+        group: "notes",
+        wide: true,
       },
     ],
     confirmText: "Add Entry",
@@ -8592,7 +8779,7 @@ async function editScanLogEntry(id) {
     const jurisdictions = opts.PERMIT?.Jurisdiction || [];
     const sectors = opts.PERMIT?.ClassificationOfUndertaking || [];
 
-    const result = await showFormModal({
+    const result = await showScanLogFormModal({
       title: "Edit Scan Log Entry",
       icon: "✏️",
       fields: [
@@ -8602,39 +8789,13 @@ async function editScanLogEntry(id) {
           type: "date",
           value: (entry.scan_date || "").slice(0, 10),
           required: true,
+          group: "info",
         },
         {
           key: "file_number",
           label: "File Number",
           value: entry.file_number || "",
-        },
-        {
-          key: "company_name",
-          label: "Company Name",
-          value: entry.company_name || "",
-          required: true,
-        },
-        {
-          key: "sector",
-          label: "Sector",
-          type: "select",
-          options: ["", ...sectors],
-          value: entry.sector || "",
-        },
-        { key: "location", label: "Location", value: entry.location || "" },
-        {
-          key: "district",
-          label: "District",
-          type: "select",
-          options: ["", ...districts],
-          value: entry.district || "",
-        },
-        {
-          key: "jurisdiction",
-          label: "Jurisdiction",
-          type: "select",
-          options: ["", ...jurisdictions],
-          value: entry.jurisdiction || "",
+          group: "info",
         },
         {
           key: "scan_status",
@@ -8645,24 +8806,68 @@ async function editScanLogEntry(id) {
             { value: "Update", label: "Update" },
           ],
           value: entry.scan_status || "New",
+          group: "info",
+        },
+        {
+          key: "company_name",
+          label: "Company Name",
+          value: entry.company_name || "",
+          required: true,
+          group: "company",
+          wide: true,
+        },
+        {
+          key: "sector",
+          label: "Sector",
+          type: "select",
+          options: ["", ...sectors],
+          value: entry.sector || "",
+          group: "company",
+          wide: true,
+        },
+        {
+          key: "location",
+          label: "Location",
+          value: entry.location || "",
+          group: "location",
+        },
+        {
+          key: "district",
+          label: "District",
+          type: "select",
+          options: ["", ...districts],
+          value: entry.district || "",
+          group: "location",
+        },
+        {
+          key: "jurisdiction",
+          label: "Jurisdiction",
+          type: "select",
+          options: ["", ...jurisdictions],
+          value: entry.jurisdiction || "",
+          group: "location",
         },
         {
           key: "last_folio",
           label: "Last Folio",
           type: "number",
           value: String(entry.last_folio || 0),
+          group: "folio",
         },
         {
           key: "current_folio",
           label: "Current Folio",
           type: "number",
           value: String(entry.current_folio || 0),
+          group: "folio",
         },
         {
           key: "notes",
           label: "Notes",
           type: "textarea",
           value: entry.notes || "",
+          group: "notes",
+          wide: true,
         },
       ],
       confirmText: "Save Changes",
@@ -8680,6 +8885,146 @@ async function editScanLogEntry(id) {
   } finally {
     removeProgressBar();
   }
+}
+
+/** Enhanced scan log form modal with grouped two-column layout */
+function showScanLogFormModal({
+  title = "Scan Log Entry",
+  icon = "📋",
+  fields = [],
+  confirmText = "Save",
+  cancelText = "Cancel",
+} = {}) {
+  return new Promise((resolve) => {
+    const existing = document.querySelector(".scanlog-modal-overlay");
+    if (existing) existing.remove();
+
+    const groupLabels = {
+      info: "Entry Information",
+      company: "Company Details",
+      location: "Location",
+      folio: "Folio Details",
+      notes: "Notes",
+    };
+
+    // Organize fields by group
+    const groups = [];
+    const groupMap = {};
+    fields.forEach((f) => {
+      const g = f.group || "other";
+      if (!groupMap[g]) {
+        groupMap[g] = { key: g, label: groupLabels[g] || g, fields: [] };
+        groups.push(groupMap[g]);
+      }
+      groupMap[g].fields.push(f);
+    });
+
+    function renderInput(f) {
+      const baseStyle =
+        "width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-white);font-size:13px;transition:border-color .2s";
+      if (f.type === "select") {
+        const opts = (f.options || [])
+          .map((o) =>
+            typeof o === "string"
+              ? `<option value="${escHtml(o)}"${o === f.value ? " selected" : ""}>${escHtml(o || "— Select —")}</option>`
+              : `<option value="${escHtml(o.value)}"${o.value === f.value ? " selected" : ""}>${escHtml(o.label)}</option>`,
+          )
+          .join("");
+        return `<select data-field="${f.key}" style="${baseStyle}">${opts}</select>`;
+      }
+      if (f.type === "textarea") {
+        return `<textarea data-field="${f.key}" rows="3" placeholder="${escHtml(f.placeholder || "")}" style="${baseStyle};resize:vertical">${escHtml(f.value || "")}</textarea>`;
+      }
+      return `<input type="${f.type || "text"}" data-field="${f.key}" value="${escHtml(String(f.value ?? ""))}" placeholder="${escHtml(f.placeholder || "")}" style="${baseStyle}" ${f.required ? "required" : ""}>`;
+    }
+
+    let groupsHtml = groups
+      .map((g) => {
+        const fieldsInGroup = g.fields;
+        let fieldsHtml = "";
+        // Render fields in a grid: wide fields take full width, others take half
+        fieldsHtml += `<div class="sl-modal-fields">`;
+        fieldsInGroup.forEach((f) => {
+          const cls = f.wide
+            ? "sl-modal-field sl-modal-field-wide"
+            : "sl-modal-field";
+          fieldsHtml += `<div class="${cls}">
+          <label class="sl-modal-label">${escHtml(f.label)}${f.required ? '<span style="color:var(--red)"> *</span>' : ""}</label>
+          ${renderInput(f)}
+        </div>`;
+        });
+        fieldsHtml += `</div>`;
+
+        return `<div class="sl-modal-group">
+        <div class="sl-modal-group-title">${escHtml(g.label)}</div>
+        ${fieldsHtml}
+      </div>`;
+      })
+      .join("");
+
+    const overlay = document.createElement("div");
+    overlay.className = "scanlog-modal-overlay";
+    overlay.style.cssText =
+      "position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:10000;animation:fadeIn .15s ease;backdrop-filter:blur(4px)";
+    overlay.innerHTML = `
+      <div class="sl-modal-container">
+        <div class="sl-modal-header">
+          <div class="sl-modal-header-icon">${icon}</div>
+          <div>
+            <h3 class="sl-modal-title">${title}</h3>
+            <p class="sl-modal-subtitle">Fill in the scan log entry details below</p>
+          </div>
+        </div>
+        <div class="sl-modal-body">${groupsHtml}</div>
+        <div class="sl-modal-footer">
+          <button class="btn sl-modal-cancel">${cancelText}</button>
+          <button class="btn btn-primary sl-modal-confirm">${confirmText}</button>
+        </div>
+      </div>
+    `;
+
+    const close = (val) => {
+      overlay.remove();
+      resolve(val);
+    };
+
+    overlay.querySelector(".sl-modal-confirm").onclick = () => {
+      const result = {};
+      fields.forEach((f) => {
+        const el = overlay.querySelector(`[data-field="${f.key}"]`);
+        if (!el) return;
+        result[f.key] = el.value;
+      });
+      const missingRequired = fields.filter(
+        (f) => f.required && !result[f.key]?.trim?.(),
+      );
+      if (missingRequired.length > 0) {
+        const firstMissing = overlay.querySelector(
+          `[data-field="${missingRequired[0].key}"]`,
+        );
+        if (firstMissing) {
+          firstMissing.style.borderColor = "var(--red)";
+          firstMissing.focus();
+        }
+        return;
+      }
+      close(result);
+    };
+    overlay.querySelector(".sl-modal-cancel").onclick = () => close(null);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) close(null);
+    });
+    const escHandler = (e) => {
+      if (e.key === "Escape") {
+        close(null);
+        document.removeEventListener("keydown", escHandler);
+      }
+    };
+    document.addEventListener("keydown", escHandler);
+    document.body.appendChild(overlay);
+    const firstInput = overlay.querySelector("input, select, textarea");
+    if (firstInput) firstInput.focus();
+  });
 }
 
 async function deleteScanLogEntry(id, name) {
@@ -9081,91 +9426,201 @@ async function applyPermitFilter() {
 
 // ── Field definitions for records entries ─────────────────────
 const REC_FIELD_SECTIONS = [
-  { title: 'Identification', fields: [
-    { key: 'company_name', label: 'Company Name', type: 'text', required: true },
-    { key: 'client_id', label: 'Client ID', type: 'text' },
-    { key: 'contact_person', label: 'Contact Person', type: 'text' },
-    { key: 'telephone', label: 'Telephone', type: 'text' },
-    { key: 'email', label: 'Email', type: 'email' },
-  ]},
-  { title: 'Operational Details', fields: [
-    { key: 'sector', label: 'Sector', type: 'suggest' },
-    { key: 'type_of_activity', label: 'Type of Activity', type: 'text' },
-    { key: 'file_number', label: 'File Number', type: 'text' },
-    { key: 'facility_location', label: 'Facility Location', type: 'text' },
-    { key: 'district', label: 'District', type: 'text' },
-    { key: 'mmda', label: 'MMDA', type: 'text' },
-    { key: 'jurisdiction', label: 'Jurisdiction', type: 'text' },
-  ]},
-  { title: 'Geospatial Data', fields: [
-    { key: 'latitude', label: 'Latitude', type: 'text' },
-    { key: 'longitude', label: 'Longitude', type: 'text' },
-  ]},
-  { title: 'Financial Tracking', fields: [
-    { key: 'processing_fee', label: 'Processing Fee', type: 'currency' },
-    { key: 'date_of_processing_fee', label: 'Date of Processing Fee', type: 'date' },
-    { key: 'date_of_payment_processing', label: 'Date of Payment (Processing)', type: 'date' },
-    { key: 'permit_fee', label: 'Permit Fee', type: 'currency' },
-    { key: 'date_of_permit_fee', label: 'Date of Permit Fee', type: 'date' },
-    { key: 'date_of_payment_permit', label: 'Date of Payment (Permit)', type: 'date' },
-    { key: 'invoice_number', label: 'Invoice Number', type: 'text' },
-    { key: 'date_of_invoice', label: 'Date of Invoice', type: 'date' },
-    { key: 'amount_to_pay', label: 'Amount to Pay', type: 'currency' },
-    { key: 'amount_paid', label: 'Amount Paid', type: 'currency' },
-    { key: 'balance', label: 'Balance', type: 'currency' },
-    { key: 'date_of_payment', label: 'Date of Payment', type: 'date' },
-    { key: 'total_amount', label: 'Total Amount', type: 'currency' },
-  ]},
-  { title: 'Permit Details', fields: [
-    { key: 'permit_number', label: 'Permit Number', type: 'text' },
-    { key: 'permit_holder', label: 'Permit Holder', type: 'text' },
-    { key: 'permit_issue_date', label: 'Permit Issue Date', type: 'date' },
-    { key: 'permit_expiry_date', label: 'Permit Expiry Date', type: 'date' },
-    { key: 'permit_renewal_date', label: 'Permit Renewal Date', type: 'date' },
-    { key: 'application_status', label: 'Application Status', type: 'text' },
-  ]},
-  { title: 'Compliance Timeline', fields: [
-    { key: 'date_of_receipt', label: 'Date of Receipt', type: 'date' },
-    { key: 'date_of_screening', label: 'Date of Screening', type: 'date' },
-    { key: 'date_of_draft_receipt', label: 'Date of Draft Receipt', type: 'date' },
-    { key: 'date_of_revised_receipt', label: 'Date of Revised Receipt', type: 'date' },
-    { key: 'date_review_sent', label: 'Date Review Comment Sent', type: 'date' },
-    { key: 'date_of_emp_submission', label: 'Date of EMP Submission', type: 'date' },
-    { key: 'date_of_trc', label: 'Date of TRC', type: 'date' },
-    { key: 'date_sent_head_office', label: 'Date Sent to Head Office', type: 'date' },
-    { key: 'date_received_head_office', label: 'Date Received from Head Office', type: 'date' },
-  ]},
-  { title: 'Monitoring & Compliance', fields: [
-    { key: 'tentative_date', label: 'Tentative Date', type: 'date' },
-    { key: 'group_name', label: 'Group', type: 'text' },
-    { key: 'coordinating_officer', label: 'Coordinating Officer', type: 'text' },
-    { key: 'monitoring_status', label: 'Monitoring Status', type: 'text' },
-    { key: 'compliance_status', label: 'Compliance Status', type: 'text' },
-    { key: 'compliance_date', label: 'Compliance Date', type: 'date' },
-    { key: 'environmental_report', label: 'Environmental Report', type: 'text' },
-    { key: 'due_date_reporting', label: 'Due Date for Reporting', type: 'date' },
-    { key: 'reporting_days', label: 'Reporting Days', type: 'text' },
-  ]},
-  { title: 'Status & Notes', fields: [
-    { key: 'officer_on_file', label: 'Officer Working on File', type: 'text' },
-    { key: 'status', label: 'Status', type: 'status' },
-    { key: 'remarks', label: 'Remarks', type: 'textarea' },
-  ]},
+  {
+    title: "Identification",
+    fields: [
+      {
+        key: "company_name",
+        label: "Company Name",
+        type: "text",
+        required: true,
+      },
+      { key: "client_id", label: "Client ID", type: "text" },
+      { key: "contact_person", label: "Contact Person", type: "text" },
+      { key: "telephone", label: "Telephone", type: "text" },
+      { key: "email", label: "Email", type: "email" },
+    ],
+  },
+  {
+    title: "Operational Details",
+    fields: [
+      { key: "sector", label: "Sector", type: "suggest" },
+      { key: "type_of_activity", label: "Type of Activity", type: "text" },
+      { key: "file_number", label: "File Number", type: "text" },
+      { key: "facility_location", label: "Facility Location", type: "text" },
+      { key: "district", label: "District", type: "text" },
+      { key: "mmda", label: "MMDA", type: "text" },
+      { key: "jurisdiction", label: "Jurisdiction", type: "text" },
+    ],
+  },
+  {
+    title: "Geospatial Data",
+    fields: [
+      { key: "latitude", label: "Latitude", type: "text" },
+      { key: "longitude", label: "Longitude", type: "text" },
+    ],
+  },
+  {
+    title: "Financial Tracking",
+    fields: [
+      { key: "processing_fee", label: "Processing Fee", type: "currency" },
+      {
+        key: "date_of_processing_fee",
+        label: "Date of Processing Fee",
+        type: "date",
+      },
+      {
+        key: "date_of_payment_processing",
+        label: "Date of Payment (Processing)",
+        type: "date",
+      },
+      { key: "permit_fee", label: "Permit Fee", type: "currency" },
+      { key: "date_of_permit_fee", label: "Date of Permit Fee", type: "date" },
+      {
+        key: "date_of_payment_permit",
+        label: "Date of Payment (Permit)",
+        type: "date",
+      },
+      { key: "invoice_number", label: "Invoice Number", type: "text" },
+      {
+        key: "invoice_number_processing",
+        label: "Invoice No. (Processing)",
+        type: "text",
+      },
+      {
+        key: "invoice_number_permit",
+        label: "Invoice No. (Permit)",
+        type: "text",
+      },
+      { key: "date_of_invoice", label: "Date of Invoice", type: "date" },
+      { key: "amount_to_pay", label: "Amount to Pay", type: "currency" },
+      { key: "amount_paid", label: "Amount Paid", type: "currency" },
+      { key: "processing_paid", label: "Processing Paid", type: "currency" },
+      { key: "permit_paid", label: "Permit Paid", type: "currency" },
+      { key: "balance", label: "Balance", type: "currency" },
+      { key: "date_of_payment", label: "Date of Payment", type: "date" },
+      { key: "total_amount", label: "Total Amount", type: "currency" },
+      {
+        key: "administrative_penalty",
+        label: "Administrative Penalty",
+        type: "currency",
+      },
+    ],
+  },
+  {
+    title: "Permit Details",
+    fields: [
+      { key: "permit_number", label: "Permit Number", type: "text" },
+      { key: "permit_holder", label: "Permit Holder", type: "text" },
+      { key: "permit_issue_date", label: "Permit Issue Date", type: "date" },
+      { key: "permit_expiry_date", label: "Permit Expiry Date", type: "date" },
+      {
+        key: "permit_renewal_date",
+        label: "Permit Renewal Date",
+        type: "date",
+      },
+      { key: "effective_date", label: "Effective Date", type: "date" },
+      { key: "processing_period", label: "Processing Period", type: "text" },
+      { key: "application_status", label: "Application Status", type: "text" },
+    ],
+  },
+  {
+    title: "Compliance Timeline",
+    fields: [
+      { key: "date_of_receipt", label: "Date of Receipt", type: "date" },
+      { key: "date_of_screening", label: "Date of Screening", type: "date" },
+      {
+        key: "date_of_draft_receipt",
+        label: "Date of Draft Receipt",
+        type: "date",
+      },
+      {
+        key: "date_of_revised_receipt",
+        label: "Date of Revised Receipt",
+        type: "date",
+      },
+      {
+        key: "date_review_sent",
+        label: "Date Review Comment Sent",
+        type: "date",
+      },
+      {
+        key: "date_of_emp_submission",
+        label: "Date of EMP Submission",
+        type: "date",
+      },
+      { key: "date_of_trc", label: "Date of TRC", type: "date" },
+      {
+        key: "date_sent_head_office",
+        label: "Date Sent to Head Office",
+        type: "date",
+      },
+      {
+        key: "date_received_head_office",
+        label: "Date Received from Head Office",
+        type: "date",
+      },
+    ],
+  },
+  {
+    title: "Monitoring & Compliance",
+    fields: [
+      { key: "tentative_date", label: "Tentative Date", type: "date" },
+      { key: "group_name", label: "Group", type: "text" },
+      {
+        key: "coordinating_officer",
+        label: "Coordinating Officer",
+        type: "text",
+      },
+      {
+        key: "additional_officers",
+        label: "Additional Officers",
+        type: "text",
+      },
+      { key: "nsps", label: "NSPS", type: "text" },
+      { key: "monitoring_status", label: "Monitoring Status", type: "text" },
+      { key: "compliance_status", label: "Compliance Status", type: "text" },
+      { key: "compliance_date", label: "Compliance Date", type: "date" },
+      {
+        key: "environmental_report",
+        label: "Environmental Report",
+        type: "text",
+      },
+      {
+        key: "due_date_reporting",
+        label: "Due Date for Reporting",
+        type: "date",
+      },
+      { key: "reporting_days", label: "Reporting Days", type: "text" },
+    ],
+  },
+  {
+    title: "Status & Notes",
+    fields: [
+      {
+        key: "officer_on_file",
+        label: "Officer Working on File",
+        type: "text",
+      },
+      { key: "status", label: "Status", type: "status" },
+      { key: "remarks", label: "Remarks", type: "textarea" },
+    ],
+  },
 ];
 
 // Master grid columns (the 5 key columns shown in the table)
 const REC_MASTER_COLS = [
-  { key: 'id', label: 'S/N', width: '60px', mono: true },
-  { key: 'company_name', label: 'Company Name', flex: 3 },
-  { key: 'date_of_receipt', label: 'Date', width: '110px' },
-  { key: 'sector', label: 'Sector', flex: 1 },
-  { key: 'status', label: 'Status', width: '120px' },
+  { key: "id", label: "S/N", width: "60px", mono: true },
+  { key: "company_name", label: "Company Name", flex: 3 },
+  { key: "date_of_receipt", label: "Date", width: "110px" },
+  { key: "sector", label: "Sector", flex: 1 },
+  { key: "status", label: "Status", width: "120px" },
 ];
 
 // ── Records Explorer View ─────────────────────────────────────
 async function renderRecordsView() {
-  const sidebar = document.getElementById('sidebar-content');
-  const tabBar = document.getElementById('tab-bar');
+  const sidebar = document.getElementById("sidebar-content");
+  const tabBar = document.getElementById("tab-bar");
   tabBar.innerHTML = '<div class="tab-item active">📂 Records Entries</div>';
   sidebar.innerHTML = '<div class="loading">Loading...</div>';
   await renderRecordsTreeSidebar();
@@ -9173,7 +9628,7 @@ async function renderRecordsView() {
   if (state.recCategory && state.recYear && state.recQuarter) {
     loadRecordsWorkspace();
   } else {
-    const content = document.getElementById('content');
+    const content = document.getElementById("content");
     content.innerHTML = `<div class="rec-welcome">
       <div class="rec-welcome-icon">📂</div>
       <h2>Records Entries</h2>
@@ -9185,12 +9640,12 @@ async function renderRecordsView() {
 
 // ── Tree Sidebar ──────────────────────────────────────────────
 async function renderRecordsTreeSidebar() {
-  const sidebar = document.getElementById('sidebar-content');
+  const sidebar = document.getElementById("sidebar-content");
   let html = '<div class="rec-tree">';
   for (const cat of REC_CATEGORIES) {
     const expanded = state.recExpandedNodes[cat.key];
     html += `<div class="rec-tree-node rec-tree-root" onclick="toggleRecTreeNode('${cat.key}')">
-      <span class="rec-tree-arrow">${expanded ? '▾' : '▸'}</span>
+      <span class="rec-tree-arrow">${expanded ? "▾" : "▸"}</span>
       <span class="rec-tree-icon">${cat.icon}</span>
       <span class="rec-tree-label">${cat.label}</span>
     </div>`;
@@ -9204,7 +9659,7 @@ async function renderRecordsTreeSidebar() {
       </div>`;
     }
   }
-  html += '</div>';
+  html += "</div>";
   sidebar.innerHTML = html;
   // Load years for expanded categories
   for (const cat of REC_CATEGORIES) {
@@ -9237,23 +9692,26 @@ async function loadRecTreeYears(catKey) {
       const yrCounts = data.counts[yr.year] || {};
       const totalCount = Object.values(yrCounts).reduce((a, b) => a + b, 0);
       html += `<div class="rec-tree-node rec-tree-year" onclick="event.stopPropagation();toggleRecTreeNode('${yrKey}')">
-        <span class="rec-tree-arrow">${yrExpanded ? '▾' : '▸'}</span>
+        <span class="rec-tree-arrow">${yrExpanded ? "▾" : "▸"}</span>
         <span class="rec-tree-icon">📅</span>
         <span class="rec-tree-label">${yr.year}</span>
-        ${totalCount > 0 ? `<span class="rec-tree-badge">${totalCount}</span>` : ''}
+        ${totalCount > 0 ? `<span class="rec-tree-badge">${totalCount}</span>` : ""}
       </div>`;
       if (yrExpanded) {
         html += '<div class="rec-tree-children">';
         for (let q = 1; q <= 4; q++) {
           const cnt = yrCounts[q] || 0;
-          const isActive = state.recCategory === catKey && state.recYear === yr.year && state.recQuarter === q;
-          html += `<div class="rec-tree-node rec-tree-quarter${isActive ? ' rec-tree-active' : ''}" onclick="event.stopPropagation();selectRecQuarter('${catKey}',${yr.year},${q})" oncontextmenu="event.preventDefault();event.stopPropagation();showRecQuarterCtx(event,'${catKey}',${yr.year},${q})">
+          const isActive =
+            state.recCategory === catKey &&
+            state.recYear === yr.year &&
+            state.recQuarter === q;
+          html += `<div class="rec-tree-node rec-tree-quarter${isActive ? " rec-tree-active" : ""}" onclick="event.stopPropagation();selectRecQuarter('${catKey}',${yr.year},${q})" oncontextmenu="event.preventDefault();event.stopPropagation();showRecQuarterCtx(event,'${catKey}',${yr.year},${q})">
             <span class="rec-tree-icon" style="font-size:11px">📋</span>
             <span class="rec-tree-label">${REC_QUARTER_LABELS[q]}</span>
-            ${cnt > 0 ? `<span class="rec-tree-badge">${cnt}</span>` : ''}
+            ${cnt > 0 ? `<span class="rec-tree-badge">${cnt}</span>` : ""}
           </div>`;
         }
-        html += '</div>';
+        html += "</div>";
       }
     }
     container.innerHTML = html;
@@ -9267,39 +9725,50 @@ function selectRecQuarter(cat, year, quarter) {
   state.recYear = year;
   state.recQuarter = quarter;
   state.recSelectedEntryId = null;
-  state.recInspectorMode = 'detail';
-  state.recSearchTerm = '';
+  state.recInspectorMode = "detail";
+  state.recSearchTerm = "";
   // Update tree active state
-  document.querySelectorAll('.rec-tree-quarter').forEach(el => el.classList.remove('rec-tree-active'));
-  const activeNode = document.querySelector(`.rec-tree-quarter[onclick*="'${cat}',${year},${quarter}"]`);
-  if (activeNode) activeNode.classList.add('rec-tree-active');
+  document
+    .querySelectorAll(".rec-tree-quarter")
+    .forEach((el) => el.classList.remove("rec-tree-active"));
+  const activeNode = document.querySelector(
+    `.rec-tree-quarter[onclick*="'${cat}',${year},${quarter}"]`,
+  );
+  if (activeNode) activeNode.classList.add("rec-tree-active");
   loadRecordsWorkspace();
 }
 
 // ── Right-click context menu on quarter ───────────────────────
 function showRecQuarterCtx(event, cat, year, quarter) {
-  document.querySelectorAll('.att-ctx-menu').forEach(m => m.remove());
-  const menu = document.createElement('div');
-  menu.className = 'att-ctx-menu';
-  menu.style.left = event.clientX + 'px';
-  menu.style.top = event.clientY + 'px';
+  document.querySelectorAll(".att-ctx-menu").forEach((m) => m.remove());
+  const menu = document.createElement("div");
+  menu.className = "att-ctx-menu";
+  menu.style.left = event.clientX + "px";
+  menu.style.top = event.clientY + "px";
   menu.innerHTML = `
     <div class="att-ctx-item" onclick="this.parentElement.remove();selectRecQuarter('${cat}',${year},${quarter});setTimeout(()=>recStartAddEntry(),200)">📝 Add New Record</div>
     <div class="att-ctx-item" onclick="this.parentElement.remove();selectRecQuarter('${cat}',${year},${quarter})">📋 View Records</div>
   `;
   document.body.appendChild(menu);
   setTimeout(() => {
-    const close = (e) => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', close); }};
-    document.addEventListener('click', close);
+    const close = (e) => {
+      if (!menu.contains(e.target)) {
+        menu.remove();
+        document.removeEventListener("click", close);
+      }
+    };
+    document.addEventListener("click", close);
   }, 0);
 }
 
 // ── Add Year Modal ────────────────────────────────────────────
 function showAddYearModal(catKey) {
   const currentYear = new Date().getFullYear();
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (e) => {
+    if (e.target === overlay) overlay.remove();
+  };
   overlay.innerHTML = `<div class="modal" style="width:400px">
     <div class="modal-header"><h3 style="margin:0">Add New Year</h3><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
     <div class="modal-body" style="padding:20px">
@@ -9309,37 +9778,50 @@ function showAddYearModal(catKey) {
     <div class="modal-footer"><button class="btn" onclick="this.closest('.modal-overlay').remove()">Cancel</button><button class="btn btn-primary" onclick="submitAddYear('${catKey}')">Add Year</button></div>
   </div>`;
   document.body.appendChild(overlay);
-  document.getElementById('rec-add-year-input').focus();
+  document.getElementById("rec-add-year-input").focus();
 }
 
 async function submitAddYear(catKey) {
-  const input = document.getElementById('rec-add-year-input');
+  const input = document.getElementById("rec-add-year-input");
   const year = parseInt(input.value);
-  if (!year || year < 2000 || year > 2100) { showToast('Please enter a valid year (2000-2100)', 'error'); return; }
+  if (!year || year < 2000 || year > 2100) {
+    showToast("Please enter a valid year (2000-2100)", "error");
+    return;
+  }
   try {
-    await api('/api/records/years', { method: 'POST', body: JSON.stringify({ category: catKey, year }) });
-    document.querySelector('.modal-overlay')?.remove();
-    showToast(`Year ${year} added to ${REC_CATEGORY_LABELS[catKey]}`, 'success');
+    await api("/api/records/years", {
+      method: "POST",
+      body: JSON.stringify({ category: catKey, year }),
+    });
+    document.querySelector(".modal-overlay")?.remove();
+    showToast(
+      `Year ${year} added to ${REC_CATEGORY_LABELS[catKey]}`,
+      "success",
+    );
     state.recExpandedNodes[catKey] = true;
     state.recExpandedNodes[`${catKey}_${year}`] = true;
     await renderRecordsTreeSidebar();
   } catch (e) {
-    showToast(e.message, 'error');
+    showToast(e.message, "error");
   }
 }
 
 // ── Master-Detail Workspace ───────────────────────────────────
 async function loadRecordsWorkspace() {
-  const content = document.getElementById('content');
-  const tabBar = document.getElementById('tab-bar');
+  const content = document.getElementById("content");
+  const tabBar = document.getElementById("tab-bar");
   const catLabel = REC_CATEGORY_LABELS[state.recCategory] || state.recCategory;
   const qLabel = REC_QUARTER_LABELS[state.recQuarter] || `Q${state.recQuarter}`;
   tabBar.innerHTML = `<div class="tab-item active">📂 ${catLabel} — ${state.recYear} ${qLabel}</div>`;
   content.innerHTML = '<div class="loading">Loading records...</div>';
   try {
-    const params = state.recSearchTerm ? `?search=${encodeURIComponent(state.recSearchTerm)}` : '';
-    const data = await api(`/api/records/entries/${state.recCategory}/${state.recYear}/${state.recQuarter}${params}`);
-    let html = '';
+    const params = state.recSearchTerm
+      ? `?search=${encodeURIComponent(state.recSearchTerm)}`
+      : "";
+    const data = await api(
+      `/api/records/entries/${state.recCategory}/${state.recYear}/${state.recQuarter}${params}`,
+    );
+    let html = "";
     // Breadcrumbs
     html += `<div class="rec-breadcrumbs">
       <span class="rec-bc-item" onclick="state.recCategory=null;state.recYear=null;state.recQuarter=null;renderRecordsView()">Records Entries</span>
@@ -9357,9 +9839,10 @@ async function loadRecordsWorkspace() {
           <span class="search-icon">🔍</span>
           <input type="search" id="rec-search-input" placeholder="Filter records..." value="${escHtml(state.recSearchTerm)}" oninput="recHandleSearch(this.value)">
         </div>
-        <span class="rec-result-count">${data.total} record${data.total !== 1 ? 's' : ''}</span>
+        <span class="rec-result-count">${data.total} record${data.total !== 1 ? "s" : ""}</span>
       </div>
       <div class="rec-toolbar-right">
+        <button class="btn btn-sm" onclick="recShowExcelUploadPicker()" title="Import from Excel">📤 Import Excel</button>
         <button class="btn btn-sm" onclick="recExportCSV()" title="Export CSV">📥 Export</button>
         <button class="btn btn-primary btn-sm" onclick="recStartAddEntry()">＋ New Entry</button>
       </div>
@@ -9373,7 +9856,7 @@ async function loadRecordsWorkspace() {
       const w = col.width ? `width:${col.width}` : `flex:${col.flex || 1}`;
       html += `<th style="${w}">${col.label}</th>`;
     }
-    html += '</tr></thead><tbody>';
+    html += "</tr></thead><tbody>";
     if (data.rows.length === 0) {
       html += `<tr><td colspan="${REC_MASTER_COLS.length}" class="rec-table-empty">
         <div class="rec-empty-zone" id="rec-drop-zone">
@@ -9387,29 +9870,40 @@ async function loadRecordsWorkspace() {
         const isSelected = state.recSelectedEntryId === row.id;
         const isNew = row._isNew;
         const statusClass = recGetStatusClass(row.status);
-        const ffFields = (row.is_forward_filled || '').split(',').filter(Boolean);
-        html += `<tr class="rec-row${isSelected ? ' rec-row-selected' : ''}${isNew ? ' rec-row-new' : ''}" data-id="${row.id}" onclick="recSelectRow(${row.id})">`;
+        const ffFields = (row.is_forward_filled || "")
+          .split(",")
+          .filter(Boolean);
+        html += `<tr class="rec-row${isSelected ? " rec-row-selected" : ""}${isNew ? " rec-row-new" : ""}" data-id="${row.id}" onclick="recSelectRow(${row.id})">`;
         html += `<td class="rec-cell-mono">${idx + 1}</td>`;
-        html += `<td class="rec-cell-name" title="${escHtml(row.company_name || '')}">${escHtml(row.company_name || '—')}</td>`;
-        html += `<td class="rec-cell-date">${escHtml(row.date_of_receipt || '—')}</td>`;
-        html += `<td class="rec-cell-sector" title="${escHtml(row.sector || '')}">${escHtml(row.sector || '—')}</td>`;
-        html += `<td><span class="rec-status-chip ${statusClass}">${escHtml(row.status || 'Pending')}</span></td>`;
-        html += '</tr>';
+        html += `<td class="rec-cell-name" title="${escHtml(row.company_name || "")}">${escHtml(row.company_name || "—")}</td>`;
+        html += `<td class="rec-cell-date">${escHtml(row.date_of_receipt || "—")}</td>`;
+        html += `<td class="rec-cell-sector" title="${escHtml(row.sector || "")}">${escHtml(row.sector || "—")}</td>`;
+        html += `<td><span class="rec-status-chip ${statusClass}">${escHtml(row.status || "Pending")}</span></td>`;
+        html += "</tr>";
       });
     }
-    html += '</tbody></table></div>';
+    html += "</tbody></table></div>";
     // Inspector Panel
     html += '<div class="rec-inspector" id="rec-inspector">';
     html += recRenderInspectorContent(data.rows);
-    html += '</div>';
-    html += '</div>'; // end master-detail
+    html += "</div>";
+    html += "</div>"; // end master-detail
     content.innerHTML = html;
     // Setup drag-drop on empty zone
-    const dropZone = document.getElementById('rec-drop-zone');
+    const dropZone = document.getElementById("rec-drop-zone");
     if (dropZone) {
-      dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('rec-drop-active'); });
-      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('rec-drop-active'));
-      dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('rec-drop-active'); recHandleCSVDrop(e); });
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("rec-drop-active");
+      });
+      dropZone.addEventListener("dragleave", () =>
+        dropZone.classList.remove("rec-drop-active"),
+      );
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("rec-drop-active");
+        recHandleCSVDrop(e);
+      });
     }
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><div class="empty-title">Error</div><div class="empty-desc">${err.message}</div></div>`;
@@ -9417,14 +9911,17 @@ async function loadRecordsWorkspace() {
 }
 
 function recGetStatusClass(status) {
-  if (!status) return 'rec-status-pending';
+  if (!status) return "rec-status-pending";
   const s = status.toLowerCase();
-  if (s.includes('permit') && (s.includes('issued') || s.includes('granted'))) return 'rec-status-permitted';
-  if (s.includes('pending') || s.includes('processing')) return 'rec-status-pending';
-  if (s.includes('expired')) return 'rec-status-expired';
-  if (s.includes('renew')) return 'rec-status-renewal';
-  if (s.includes('complete') || s.includes('done') || s.includes('valid')) return 'rec-status-permitted';
-  return 'rec-status-pending';
+  if (s.includes("permit") && (s.includes("issued") || s.includes("granted")))
+    return "rec-status-permitted";
+  if (s.includes("pending") || s.includes("processing"))
+    return "rec-status-pending";
+  if (s.includes("expired")) return "rec-status-expired";
+  if (s.includes("renew")) return "rec-status-renewal";
+  if (s.includes("complete") || s.includes("done") || s.includes("valid"))
+    return "rec-status-permitted";
+  return "rec-status-pending";
 }
 
 function recHandleSearch(val) {
@@ -9436,12 +9933,17 @@ function recHandleSearch(val) {
 // ── Select Row → Inspector ────────────────────────────────────
 async function recSelectRow(id) {
   state.recSelectedEntryId = id;
-  state.recInspectorMode = 'detail';
+  state.recInspectorMode = "detail";
   // Highlight row
-  document.querySelectorAll('.rec-row').forEach(r => r.classList.toggle('rec-row-selected', parseInt(r.dataset.id) === id));
+  document
+    .querySelectorAll(".rec-row")
+    .forEach((r) =>
+      r.classList.toggle("rec-row-selected", parseInt(r.dataset.id) === id),
+    );
   // Load entry details
-  const inspector = document.getElementById('rec-inspector');
-  inspector.innerHTML = '<div class="loading" style="padding:20px">Loading...</div>';
+  const inspector = document.getElementById("rec-inspector");
+  inspector.innerHTML =
+    '<div class="loading" style="padding:20px">Loading...</div>';
   try {
     const entry = await api(`/api/records/entry/${id}`);
     inspector.innerHTML = recRenderDetailInspector(entry);
@@ -9451,9 +9953,9 @@ async function recSelectRow(id) {
 }
 
 function recRenderInspectorContent(rows) {
-  if (state.recInspectorMode === 'add') return recRenderAddForm();
+  if (state.recInspectorMode === "add") return recRenderAddForm();
   if (state.recSelectedEntryId) {
-    const entry = rows.find(r => r.id === state.recSelectedEntryId);
+    const entry = rows.find((r) => r.id === state.recSelectedEntryId);
     if (entry) return recRenderDetailInspector(entry);
   }
   return `<div class="rec-inspector-empty">
@@ -9464,113 +9966,128 @@ function recRenderInspectorContent(rows) {
 
 // ── Detail Inspector ──────────────────────────────────────────
 function recRenderDetailInspector(entry) {
-  const ffFields = (entry.is_forward_filled || '').split(',').filter(Boolean);
+  const ffFields = (entry.is_forward_filled || "").split(",").filter(Boolean);
   let html = `<div class="rec-insp-header">
-    <div class="rec-insp-title">${escHtml(entry.company_name || 'Record #' + entry.id)}</div>
+    <div class="rec-insp-title">${escHtml(entry.company_name || "Record #" + entry.id)}</div>
     <div class="rec-insp-actions">
       <button class="btn btn-sm" onclick="recStartEditEntry(${entry.id})" title="Edit">✏️ Edit</button>
       <button class="btn btn-sm rec-btn-danger" onclick="recDeleteEntry(${entry.id})" title="Delete">🗑️</button>
     </div>
   </div>
   <div class="rec-insp-meta">
-    <span class="rec-status-chip ${recGetStatusClass(entry.status)}">${escHtml(entry.status || 'Pending')}</span>
-    <span style="font-size:11px;color:var(--text-muted)">Created ${escHtml(entry.created_at || '')} by ${escHtml(entry.created_by || 'system')}</span>
+    <span class="rec-status-chip ${recGetStatusClass(entry.status)}">${escHtml(entry.status || "Pending")}</span>
+    <span style="font-size:11px;color:var(--text-muted)">Created ${escHtml(entry.created_at || "")} by ${escHtml(entry.created_by || "system")}</span>
   </div>`;
   html += '<div class="rec-insp-fields">';
   for (const section of REC_FIELD_SECTIONS) {
-    const hasData = section.fields.some(f => entry[f.key] !== null && entry[f.key] !== undefined && entry[f.key] !== '');
+    const hasData = section.fields.some(
+      (f) =>
+        entry[f.key] !== null &&
+        entry[f.key] !== undefined &&
+        entry[f.key] !== "",
+    );
     if (!hasData) continue;
     html += `<div class="rec-insp-section">
       <div class="rec-insp-section-title">${section.title}</div>`;
     for (const f of section.fields) {
       const val = entry[f.key];
-      if (val === null || val === undefined || val === '') continue;
+      if (val === null || val === undefined || val === "") continue;
       const isFF = ffFields.includes(f.key);
-      const displayVal = f.type === 'currency' ? formatGHS(val) : escHtml(String(val));
+      const displayVal =
+        f.type === "currency" ? formatGHS(val) : escHtml(String(val));
       html += `<div class="rec-insp-field">
         <span class="rec-insp-label">${f.label}</span>
-        <span class="rec-insp-value${isFF ? ' rec-insp-ghost' : ''}${f.type === 'currency' ? ' rec-cell-mono' : ''}">${displayVal}${isFF ? ' <span class="rec-ff-tag">auto-filled</span>' : ''}</span>
+        <span class="rec-insp-value${isFF ? " rec-insp-ghost" : ""}${f.type === "currency" ? " rec-cell-mono" : ""}">${displayVal}${isFF ? ' <span class="rec-ff-tag">auto-filled</span>' : ""}</span>
       </div>`;
     }
-    html += '</div>';
+    html += "</div>";
   }
-  html += '</div>';
+  html += "</div>";
   return html;
 }
 
 function formatGHS(val) {
   const n = parseFloat(val);
   if (isNaN(n)) return escHtml(String(val));
-  return 'GHS ' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (
+    "GHS " +
+    n.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  );
 }
 
 // ── Add Entry Form ────────────────────────────────────────────
 function recStartAddEntry() {
-  state.recInspectorMode = 'add';
+  state.recInspectorMode = "add";
   state.recSelectedEntryId = null;
-  document.querySelectorAll('.rec-row').forEach(r => r.classList.remove('rec-row-selected'));
-  const inspector = document.getElementById('rec-inspector');
+  document
+    .querySelectorAll(".rec-row")
+    .forEach((r) => r.classList.remove("rec-row-selected"));
+  const inspector = document.getElementById("rec-inspector");
   if (inspector) inspector.innerHTML = recRenderAddForm();
   // Dim the master grid
-  const master = document.getElementById('rec-master');
-  if (master) master.classList.add('rec-master-dimmed');
+  const master = document.getElementById("rec-master");
+  if (master) master.classList.add("rec-master-dimmed");
 }
 
 function recCancelAdd() {
-  state.recInspectorMode = 'detail';
-  const inspector = document.getElementById('rec-inspector');
-  if (inspector) inspector.innerHTML = `<div class="rec-inspector-empty">
+  state.recInspectorMode = "detail";
+  const inspector = document.getElementById("rec-inspector");
+  if (inspector)
+    inspector.innerHTML = `<div class="rec-inspector-empty">
     <div class="rec-inspector-empty-icon">👈</div>
     <div class="rec-inspector-empty-text">Select a record from the table to view its details</div>
   </div>`;
-  const master = document.getElementById('rec-master');
-  if (master) master.classList.remove('rec-master-dimmed');
+  const master = document.getElementById("rec-master");
+  if (master) master.classList.remove("rec-master-dimmed");
 }
 
 function recRenderAddForm(editEntry) {
   const isEdit = !!editEntry;
-  const title = isEdit ? 'Edit Record' : 'New Record';
-  const catLabel = REC_CATEGORY_LABELS[state.recCategory] || '';
-  const qLabel = REC_QUARTER_LABELS[state.recQuarter] || '';
+  const title = isEdit ? "Edit Record" : "New Record";
+  const catLabel = REC_CATEGORY_LABELS[state.recCategory] || "";
+  const qLabel = REC_QUARTER_LABELS[state.recQuarter] || "";
   let html = `<div class="rec-form-header">
     <div class="rec-form-title">${title}</div>
     <div class="rec-form-context">${catLabel} › ${state.recYear} › ${qLabel}</div>
   </div>
-  <form id="rec-entry-form" class="rec-form" onsubmit="event.preventDefault();recSubmitEntry(${isEdit ? editEntry.id : 'null'})">`;
+  <form id="rec-entry-form" class="rec-form" onsubmit="event.preventDefault();recSubmitEntry(${isEdit ? editEntry.id : "null"})">`;
   for (const section of REC_FIELD_SECTIONS) {
     html += `<div class="rec-form-section-title">${section.title}</div>`;
     for (const f of section.fields) {
-      const val = isEdit ? (editEntry[f.key] || '') : '';
-      const reqMark = f.required ? '<span class="rec-required">*</span>' : '';
+      const val = isEdit ? editEntry[f.key] || "" : "";
+      const reqMark = f.required ? '<span class="rec-required">*</span>' : "";
       html += `<div class="rec-form-group">
         <label class="rec-form-label">${f.label}${reqMark}</label>`;
-      if (f.type === 'textarea') {
+      if (f.type === "textarea") {
         html += `<textarea name="${f.key}" class="rec-form-input rec-form-textarea" rows="3">${escHtml(String(val))}</textarea>`;
-      } else if (f.type === 'date') {
+      } else if (f.type === "date") {
         html += `<input type="date" name="${f.key}" class="rec-form-input" value="${escHtml(String(val))}">`;
-      } else if (f.type === 'currency') {
+      } else if (f.type === "currency") {
         html += `<div class="rec-currency-wrap"><span class="rec-currency-prefix">GHS</span><input type="number" step="0.01" name="${f.key}" class="rec-form-input rec-form-currency" value="${val}" oninput="recAutoCalcTotals()"></div>`;
-      } else if (f.type === 'suggest') {
+      } else if (f.type === "suggest") {
         html += `<input type="text" name="${f.key}" class="rec-form-input" value="${escHtml(String(val))}" list="rec-suggest-${f.key}" autocomplete="off">
         <datalist id="rec-suggest-${f.key}"></datalist>`;
-      } else if (f.type === 'status') {
+      } else if (f.type === "status") {
         html += `<select name="${f.key}" class="rec-form-input">
-          <option value="Pending"${val === 'Pending' ? ' selected' : ''}>Pending</option>
-          <option value="Processing"${val === 'Processing' ? ' selected' : ''}>Processing</option>
-          <option value="Permit Issued"${val === 'Permit Issued' ? ' selected' : ''}>Permit Issued</option>
-          <option value="Expired"${val === 'Expired' ? ' selected' : ''}>Expired</option>
-          <option value="Renewal"${val === 'Renewal' ? ' selected' : ''}>Renewal</option>
-          <option value="Completed"${val === 'Completed' ? ' selected' : ''}>Completed</option>
+          <option value="Pending"${val === "Pending" ? " selected" : ""}>Pending</option>
+          <option value="Processing"${val === "Processing" ? " selected" : ""}>Processing</option>
+          <option value="Permit Issued"${val === "Permit Issued" ? " selected" : ""}>Permit Issued</option>
+          <option value="Expired"${val === "Expired" ? " selected" : ""}>Expired</option>
+          <option value="Renewal"${val === "Renewal" ? " selected" : ""}>Renewal</option>
+          <option value="Completed"${val === "Completed" ? " selected" : ""}>Completed</option>
         </select>`;
       } else {
-        html += `<input type="${f.type === 'email' ? 'email' : 'text'}" name="${f.key}" class="rec-form-input" value="${escHtml(String(val))}"${f.required ? ' required' : ''}>`;
+        html += `<input type="${f.type === "email" ? "email" : "text"}" name="${f.key}" class="rec-form-input" value="${escHtml(String(val))}"${f.required ? " required" : ""}>`;
       }
-      html += '</div>';
+      html += "</div>";
     }
   }
   html += `<div class="rec-form-actions">
     <button type="button" class="btn" onclick="recCancelAdd()">Cancel</button>
-    <button type="submit" class="btn btn-primary" id="rec-save-btn">${isEdit ? 'Save Changes' : 'Save Entry'}</button>
+    <button type="submit" class="btn btn-primary" id="rec-save-btn">${isEdit ? "Save Changes" : "Save Entry"}</button>
   </div></form>`;
   // Load sector suggestions
   setTimeout(() => recLoadSectorSuggestions(), 100);
@@ -9580,23 +10097,29 @@ function recRenderAddForm(editEntry) {
 async function recLoadSectorSuggestions() {
   try {
     const data = await api(`/api/records/analytics`);
-    const dl = document.getElementById('rec-suggest-sector');
+    const dl = document.getElementById("rec-suggest-sector");
     if (dl && data.sectors) {
-      dl.innerHTML = data.sectors.map(s => `<option value="${escHtml(s)}">`).join('');
+      dl.innerHTML = data.sectors
+        .map((s) => `<option value="${escHtml(s)}">`)
+        .join("");
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    /* ignore */
+  }
 }
 
 function recAutoCalcTotals() {
-  const form = document.getElementById('rec-entry-form');
+  const form = document.getElementById("rec-entry-form");
   if (!form) return;
-  const pf = parseFloat(form.querySelector('[name="processing_fee"]')?.value) || 0;
+  const pf =
+    parseFloat(form.querySelector('[name="processing_fee"]')?.value) || 0;
   const pmf = parseFloat(form.querySelector('[name="permit_fee"]')?.value) || 0;
   const totalInput = form.querySelector('[name="total_amount"]');
   if (totalInput && !totalInput.dataset.manual) {
     totalInput.value = (pf + pmf).toFixed(2);
   }
-  const paid = parseFloat(form.querySelector('[name="amount_paid"]')?.value) || 0;
+  const paid =
+    parseFloat(form.querySelector('[name="amount_paid"]')?.value) || 0;
   const toPayInput = form.querySelector('[name="amount_to_pay"]');
   const balInput = form.querySelector('[name="balance"]');
   if (balInput && !balInput.dataset.manual) {
@@ -9606,31 +10129,50 @@ function recAutoCalcTotals() {
 }
 
 async function recSubmitEntry(editId) {
-  const form = document.getElementById('rec-entry-form');
+  const form = document.getElementById("rec-entry-form");
   if (!form) return;
   const formData = new FormData(form);
-  const body = { category: state.recCategory, year: state.recYear, quarter: state.recQuarter };
+  const body = {
+    category: state.recCategory,
+    year: state.recYear,
+    quarter: state.recQuarter,
+  };
   for (const [k, v] of formData.entries()) body[k] = v;
-  const saveBtn = document.getElementById('rec-save-btn');
-  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+  const saveBtn = document.getElementById("rec-save-btn");
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving...";
+  }
   try {
     if (editId) {
-      await api(`/api/records/entry/${editId}`, { method: 'PUT', body: JSON.stringify(body) });
-      showToast('Record updated successfully', 'success');
+      await api(`/api/records/entry/${editId}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+      showToast("Record updated successfully", "success");
     } else {
-      const result = await api('/api/records/entries', { method: 'POST', body: JSON.stringify(body) });
-      showToast(`Record ${result.file_number || '#' + result.id} successfully added to ${state.recYear} Q${state.recQuarter}`, 'success');
+      const result = await api("/api/records/entries", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      showToast(
+        `Record ${result.file_number || "#" + result.id} successfully added to ${state.recYear} Q${state.recQuarter}`,
+        "success",
+      );
     }
-    state.recInspectorMode = 'detail';
-    const master = document.getElementById('rec-master');
-    if (master) master.classList.remove('rec-master-dimmed');
+    state.recInspectorMode = "detail";
+    const master = document.getElementById("rec-master");
+    if (master) master.classList.remove("rec-master-dimmed");
     await loadRecordsWorkspace();
     // Refresh sidebar counts
     const catKey = state.recCategory;
     if (state.recExpandedNodes[catKey]) loadRecTreeYears(catKey);
   } catch (e) {
-    showToast(e.message, 'error');
-    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = editId ? 'Save Changes' : 'Save Entry'; }
+    showToast(e.message, "error");
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = editId ? "Save Changes" : "Save Entry";
+    }
   }
 }
 
@@ -9638,28 +10180,28 @@ async function recSubmitEntry(editId) {
 async function recStartEditEntry(id) {
   try {
     const entry = await api(`/api/records/entry/${id}`);
-    state.recInspectorMode = 'edit';
-    const inspector = document.getElementById('rec-inspector');
+    state.recInspectorMode = "edit";
+    const inspector = document.getElementById("rec-inspector");
     if (inspector) inspector.innerHTML = recRenderAddForm(entry);
-    const master = document.getElementById('rec-master');
-    if (master) master.classList.add('rec-master-dimmed');
+    const master = document.getElementById("rec-master");
+    if (master) master.classList.add("rec-master-dimmed");
   } catch (e) {
-    showToast(e.message, 'error');
+    showToast(e.message, "error");
   }
 }
 
 // ── Delete Entry ──────────────────────────────────────────────
 async function recDeleteEntry(id) {
-  if (!confirm('Are you sure you want to delete this record?')) return;
+  if (!confirm("Are you sure you want to delete this record?")) return;
   try {
-    await api(`/api/records/entry/${id}`, { method: 'DELETE' });
-    showToast('Record deleted', 'success');
+    await api(`/api/records/entry/${id}`, { method: "DELETE" });
+    showToast("Record deleted", "success");
     state.recSelectedEntryId = null;
     await loadRecordsWorkspace();
     const catKey = state.recCategory;
     if (state.recExpandedNodes[catKey]) loadRecTreeYears(catKey);
   } catch (e) {
-    showToast(e.message, 'error');
+    showToast(e.message, "error");
   }
 }
 
@@ -9667,51 +10209,89 @@ async function recDeleteEntry(id) {
 async function recHandleCSVDrop(event) {
   const file = event.dataTransfer?.files?.[0];
   if (!file) return;
-  if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) {
-    showToast('Please drop a CSV or XLSX file', 'error');
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (ext === "xlsx" || ext === "xls") {
+    // Handle Excel file via upload endpoint
+    recHandleExcelUpload(file);
     return;
   }
-  showToast('Parsing file...', 'info');
+  if (ext !== "csv") {
+    showToast("Please drop a CSV or Excel file", "error");
+    return;
+  }
+  showToast("Parsing file...", "info");
   try {
     const text = await file.text();
     const rows = recParseCSV(text);
-    if (rows.length === 0) { showToast('No data rows found', 'error'); return; }
-    const result = await api(`/api/records/import/${state.recCategory}/${state.recYear}/${state.recQuarter}`, {
-      method: 'POST',
-      body: JSON.stringify({ rows, ffillCols: ['tentative_date', 'group_name', 'coordinating_officer'] })
-    });
-    showToast(`Imported ${result.inserted} records successfully`, 'success');
+    if (rows.length === 0) {
+      showToast("No data rows found", "error");
+      return;
+    }
+    const result = await api(
+      `/api/records/import/${state.recCategory}/${state.recYear}/${state.recQuarter}`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          rows,
+          ffillCols: ["tentative_date", "group_name", "coordinating_officer"],
+        }),
+      },
+    );
+    showToast(`Imported ${result.inserted} records successfully`, "success");
     await loadRecordsWorkspace();
     const catKey = state.recCategory;
     if (state.recExpandedNodes[catKey]) loadRecTreeYears(catKey);
   } catch (e) {
-    showToast('Import failed: ' + e.message, 'error');
+    showToast("Import failed: " + e.message, "error");
   }
 }
 
 function recParseCSV(text) {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   if (lines.length < 2) return [];
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_'));
+  const headers = lines[0].split(",").map((h) =>
+    h
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, "_"),
+  );
   const fieldMap = {};
   // Map common header names to our column names
   const headerMappings = {
-    'company': 'company_name', 'company_name': 'company_name', 'name_of_company': 'company_name',
-    'sector': 'sector', 'district': 'district', 'location': 'facility_location',
-    'contact': 'contact_person', 'phone': 'telephone', 'email': 'email',
-    'latitude': 'latitude', 'longitude': 'longitude', 'mmda': 'mmda',
-    'processing_fee': 'processing_fee', 'permit_fee': 'permit_fee',
-    'status': 'status', 'remarks': 'remarks', 'file_number': 'file_number',
-    'permit_number': 'permit_number', 'date_of_receipt': 'date_of_receipt',
-    'tentative_date': 'tentative_date', 'group': 'group_name', 'group_name': 'group_name',
-    'officer': 'coordinating_officer', 'coordinating_officer': 'coordinating_officer',
+    company: "company_name",
+    company_name: "company_name",
+    name_of_company: "company_name",
+    sector: "sector",
+    district: "district",
+    location: "facility_location",
+    contact: "contact_person",
+    phone: "telephone",
+    email: "email",
+    latitude: "latitude",
+    longitude: "longitude",
+    mmda: "mmda",
+    processing_fee: "processing_fee",
+    permit_fee: "permit_fee",
+    status: "status",
+    remarks: "remarks",
+    file_number: "file_number",
+    permit_number: "permit_number",
+    date_of_receipt: "date_of_receipt",
+    tentative_date: "tentative_date",
+    group: "group_name",
+    group_name: "group_name",
+    officer: "coordinating_officer",
+    coordinating_officer: "coordinating_officer",
   };
   headers.forEach((h, i) => {
     const mapped = headerMappings[h] || h;
     fieldMap[i] = mapped;
   });
-  return lines.slice(1).map(line => {
-    const vals = line.split(',');
+  return lines.slice(1).map((line) => {
+    const vals = line.split(",");
     const row = {};
     vals.forEach((v, i) => {
       if (fieldMap[i]) row[fieldMap[i]] = v.trim();
@@ -9720,121 +10300,1257 @@ function recParseCSV(text) {
   });
 }
 
+// ══════════════════════════════════════════════════════════════
+//  EXCEL IMPORT WIZARD
+// ══════════════════════════════════════════════════════════════
+
+/** Upload an Excel file to the server for parsing and show the import wizard */
+async function recHandleExcelUpload(file, forceCategory) {
+  // Validate file before uploading
+  if (!file) return;
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (ext !== "xlsx" && ext !== "xls") {
+    showToast("Please select an Excel file (.xlsx or .xls)", "error");
+    return;
+  }
+  if (file.size > 100 * 1024 * 1024) {
+    showToast("File exceeds 100 MB limit", "error");
+    return;
+  }
+
+  // Show loading overlay
+  const loadingOverlay = document.createElement("div");
+  loadingOverlay.className = "modal-overlay";
+  loadingOverlay.id = "excel-loading-overlay";
+  loadingOverlay.innerHTML = `<div class="modal" style="width:420px;text-align:center;padding:40px">
+    <div class="excel-loading-spinner"></div>
+    <h3 style="margin:16px 0 8px;color:var(--text-white)">Processing Excel File</h3>
+    <p id="excel-loading-status" style="color:var(--text-muted);font-size:13px;margin:0">
+      Uploading <strong>${escHtml(file.name)}</strong> (${(file.size / 1024).toFixed(0)} KB)...
+    </p>
+  </div>`;
+  document.body.appendChild(loadingOverlay);
+
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    // Update status
+    const statusEl = document.getElementById("excel-loading-status");
+
+    const resp = await fetch("/api/records/excel-parse", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + state.token },
+      body: formData,
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || `Upload failed (HTTP ${resp.status})`);
+    }
+
+    if (statusEl)
+      statusEl.textContent = "Analyzing sheets and extracting data...";
+
+    const data = await resp.json();
+    if (forceCategory) data.detectedCategory = forceCategory;
+
+    // Remove loading overlay and show wizard
+    loadingOverlay.remove();
+    showExcelImportWizard(data);
+  } catch (e) {
+    loadingOverlay.remove();
+    showToast("Excel import failed: " + e.message, "error");
+  }
+}
+
+/** Show import wizard modal with parsed Excel data */
+function showExcelImportWizard(data) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.id = "excel-import-overlay";
+  overlay.onclick = (e) => {
+    if (e.target === overlay) overlay.remove();
+  };
+
+  const catOptions = [
+    { key: "applications_received", label: "Applications Received" },
+    { key: "permitted_applications", label: "Permitted Applications" },
+    { key: "monitoring_records", label: "Monitoring Records" },
+  ];
+
+  // Build the column mapping display
+  const allMappedHeaders = [];
+  const seenMaps = new Set();
+  data.sheets.forEach((sh) => {
+    (sh.mappedHeaders || []).forEach((m) => {
+      const key = m.excel + "→" + m.db;
+      if (!seenMaps.has(key)) {
+        seenMaps.add(key);
+        allMappedHeaders.push(m);
+      }
+    });
+  });
+  let mappingHtml = "";
+  if (allMappedHeaders.length > 0) {
+    mappingHtml = `<div class="excel-mapping-grid">`;
+    allMappedHeaders.forEach((m) => {
+      const dbLabel = m.db
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+      mappingHtml += `<div class="excel-mapping-item">
+        <span class="excel-map-from">${escHtml(m.excel)}</span>
+        <span class="excel-map-arrow">→</span>
+        <span class="excel-map-to">${escHtml(dbLabel)}</span>
+      </div>`;
+    });
+    mappingHtml += `</div>`;
+  }
+
+  // Build sheets list
+  let sheetsHtml = "";
+  data.sheets.forEach((sh, idx) => {
+    const checked = sh.rowCount > 0 ? "checked" : "";
+    sheetsHtml += `<div class="excel-sheet-row">
+      <label class="excel-sheet-check">
+        <input type="checkbox" id="excel-sh-${idx}" ${checked} onchange="excelPreviewUpdate()">
+        <span class="excel-sheet-name">${escHtml(sh.sheetName)}</span>
+      </label>
+      <select id="excel-sq-${idx}" class="excel-quarter-sel" onchange="excelPreviewUpdate()">
+        <option value="1" ${sh.detectedQuarter === 1 ? "selected" : ""}>Q1 (Jan-Mar)</option>
+        <option value="2" ${sh.detectedQuarter === 2 ? "selected" : ""}>Q2 (Apr-Jun)</option>
+        <option value="3" ${sh.detectedQuarter === 3 ? "selected" : ""}>Q3 (Jul-Sep)</option>
+        <option value="4" ${sh.detectedQuarter === 4 ? "selected" : ""}>Q4 (Oct-Dec)</option>
+      </select>
+      <span class="excel-row-count">${sh.rowCount.toLocaleString()} rows</span>
+      <span class="excel-col-count">${sh.columnsFound.length} cols</span>
+    </div>`;
+  });
+
+  // Preview table from first sheet with data
+  const previewSheet = data.sheets.find(
+    (s) => s.preview && s.preview.length > 0,
+  );
+  let previewHtml = buildExcelPreviewTable(previewSheet);
+
+  const totalRows = data.sheets.reduce((s, sh) => s + sh.rowCount, 0);
+  const sheetsWithData = data.sheets.filter((s) => s.rowCount > 0).length;
+
+  overlay.innerHTML = `<div class="modal" style="width:780px;max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-header">
+      <h3 style="margin:0">📊 Excel Import Wizard</h3>
+      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:20px;overflow-y:auto;flex:1">
+
+      <div class="excel-wizard-filename">
+        📄 ${escHtml(data.filename)}
+        <span style="float:right;font-weight:400;color:var(--text-muted);font-size:12px">
+          ${data.sheets.length} sheet(s) &middot; ${totalRows.toLocaleString()} records found
+        </span>
+      </div>
+
+      <div class="excel-wizard-steps">
+        <div class="excel-step active" id="excel-step-ind-1"><span class="excel-step-num">1</span> Configure</div>
+        <div class="excel-step" id="excel-step-ind-2"><span class="excel-step-num">2</span> Review &amp; Edit</div>
+        <div class="excel-step" id="excel-step-ind-3"><span class="excel-step-num">3</span> Import</div>
+      </div>
+
+      <!-- STEP 1: Configure -->
+      <div id="excel-step-1">
+        <div class="excel-wizard-row">
+          <div class="excel-wizard-field">
+            <label>Record Category</label>
+            <select id="excel-import-cat" class="excel-wizard-select" onchange="excelPreviewUpdate()">
+              ${catOptions.map((c) => `<option value="${c.key}" ${c.key === data.detectedCategory ? "selected" : ""}>${c.label}</option>`).join("")}
+            </select>
+            ${data.detectedCategory ? `<span class="excel-auto-tag">Auto-detected from filename</span>` : ""}
+          </div>
+          <div class="excel-wizard-field">
+            <label>Year</label>
+            <input type="number" id="excel-import-year" value="${data.detectedYear || new Date().getFullYear()}" min="2000" max="2100" class="excel-wizard-input">
+            ${data.detectedYear ? `<span class="excel-auto-tag">Auto-detected from filename</span>` : ""}
+          </div>
+        </div>
+
+        <div class="excel-wizard-section-title">Sheets to Import (${sheetsWithData} with data)</div>
+        <div class="excel-sheets-list">${sheetsHtml}</div>
+
+        ${
+          allMappedHeaders.length > 0
+            ? `
+        <div class="excel-wizard-section-title">Column Mapping (${allMappedHeaders.length} columns matched)</div>
+        ${mappingHtml}`
+            : ""
+        }
+
+        <div class="excel-wizard-section-title">Data Preview</div>
+        <div id="excel-preview-area">${previewHtml || '<div class="excel-no-preview">No preview data available</div>'}</div>
+
+        <div class="excel-wizard-summary">
+          <div class="excel-summary-row">
+            <span class="excel-summary-label">Total records to import:</span>
+            <span class="excel-summary-total" id="excel-total-count">${totalRows.toLocaleString()}</span>
+          </div>
+          <div class="excel-summary-row" style="margin-top:4px">
+            <span class="excel-summary-detail" id="excel-sheet-summary">
+              ${data.sheets
+                .filter((s) => s.rowCount > 0)
+                .map((s) => `${s.sheetName}: ${s.rowCount.toLocaleString()}`)
+                .join(" &middot; ")}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2: Review & Edit (loaded on demand) -->
+      <div id="excel-step-2" style="display:none">
+        <div style="text-align:center;padding:40px">
+          <div class="excel-loading-spinner"></div>
+          <p style="color:var(--text-muted);font-size:13px">Loading all rows for review...</p>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer" style="gap:8px">
+      <button class="btn" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="btn btn-primary" id="excel-next-btn" onclick="excelWizardNext()">
+        Next: Review Data →
+      </button>
+    </div>
+  </div>`;
+
+  document.body.appendChild(overlay);
+  // Store parsed data globally for import execution
+  window._excelImportData = data;
+  window._excelWizardStep = 1;
+}
+
+/** Navigate between wizard steps */
+async function excelWizardNext() {
+  const data = window._excelImportData;
+  if (!data) return;
+
+  if (window._excelWizardStep === 1) {
+    // Validate step 1
+    const year = parseInt(document.getElementById("excel-import-year").value);
+    if (!year || year < 2000 || year > 2100) {
+      showToast("Please enter a valid year (2000-2100)", "error");
+      return;
+    }
+
+    // Check at least one sheet selected
+    let hasSelected = false;
+    data.sheets.forEach((sh, idx) => {
+      const cb = document.getElementById(`excel-sh-${idx}`);
+      if (cb && cb.checked && sh.rowCount > 0) hasSelected = true;
+    });
+    if (!hasSelected) {
+      showToast("Please select at least one sheet to import", "error");
+      return;
+    }
+
+    // Move to step 2
+    window._excelWizardStep = 2;
+    document.getElementById("excel-step-1").style.display = "none";
+    document.getElementById("excel-step-2").style.display = "";
+    document.getElementById("excel-step-ind-1").classList.remove("active");
+    document.getElementById("excel-step-ind-2").classList.add("active");
+
+    const nextBtn = document.getElementById("excel-next-btn");
+    nextBtn.style.display = "none";
+
+    // Load full data from temp file
+    try {
+      const resp = await api(`/api/records/excel-temp/${data.tempId}`);
+      const allSheets = resp.sheets;
+
+      // Merge full rows into our data
+      data.sheets.forEach((sh) => {
+        const stored = allSheets.find((s) => s.sheetName === sh.sheetName);
+        if (stored) sh._allRows = stored.allRows || [];
+      });
+
+      // Build review UI
+      buildExcelReviewStep(data);
+    } catch (e) {
+      document.getElementById("excel-step-2").innerHTML = `
+        <div style="text-align:center;padding:40px;color:var(--red)">
+          <p>Failed to load data: ${escHtml(e.message)}</p>
+          <button class="btn" onclick="excelWizardBack()">← Back</button>
+        </div>`;
+    }
+  } else if (window._excelWizardStep === 2) {
+    // Execute import from step 2
+    await executeExcelImport();
+  }
+}
+
+function excelWizardBack() {
+  window._excelWizardStep = 1;
+  document.getElementById("excel-step-1").style.display = "";
+  document.getElementById("excel-step-2").style.display = "none";
+  document.getElementById("excel-step-ind-1").classList.add("active");
+  document.getElementById("excel-step-ind-2").classList.remove("active");
+  const nextBtn = document.getElementById("excel-next-btn");
+  nextBtn.style.display = "";
+  nextBtn.innerHTML = "Next: Review Data →";
+}
+
+/** Build the review/edit data table for step 2 */
+function buildExcelReviewStep(data) {
+  const container = document.getElementById("excel-step-2");
+
+  // Collect selected sheets and their rows
+  const selectedSheets = [];
+  data.sheets.forEach((sh, idx) => {
+    const cb = document.getElementById(`excel-sh-${idx}`);
+    if (cb && cb.checked && sh._allRows && sh._allRows.length > 0) {
+      selectedSheets.push({ ...sh, sheetIndex: idx });
+    }
+  });
+
+  if (selectedSheets.length === 0) {
+    container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-dim)">
+      <p>No data to review.</p>
+      <button class="btn" onclick="excelWizardBack()">← Back</button>
+    </div>`;
+    return;
+  }
+
+  // Build tabs for each sheet
+  let tabsHtml = "";
+  selectedSheets.forEach((sh, ti) => {
+    tabsHtml += `<button class="excel-review-tab ${ti === 0 ? "active" : ""}" onclick="excelReviewSwitchTab(${ti})">${escHtml(sh.sheetName)} <span class="excel-review-tab-count" id="excel-review-count-${ti}">(${sh._allRows.length})</span></button>`;
+  });
+
+  let html = `
+    <div class="excel-review-toolbar">
+      <button class="btn btn-sm" onclick="excelWizardBack()">← Back to Configure</button>
+      <div class="excel-review-tabs">${tabsHtml}</div>
+      <div class="excel-review-actions">
+        <button class="btn btn-sm btn-danger" onclick="excelReviewDeleteSelected()" id="excel-review-delete-btn" disabled>🗑 Delete Selected</button>
+      </div>
+    </div>
+    <div class="excel-review-info">
+      <span>💡 Click any cell to edit. Use checkboxes to select rows for deletion.</span>
+      <span id="excel-review-totals"></span>
+    </div>`;
+
+  // Build a table for each sheet
+  selectedSheets.forEach((sh, ti) => {
+    const cols = sh.columnsFound;
+    html += `<div class="excel-review-sheet" id="excel-review-sheet-${ti}" style="${ti > 0 ? "display:none" : ""}">
+      <div class="excel-review-table-wrap">
+        <table class="excel-review-table" id="excel-review-tbl-${ti}">
+          <thead><tr>
+            <th class="excel-review-chk-col"><input type="checkbox" onchange="excelReviewToggleAll(${ti}, this.checked)"></th>
+            <th class="excel-review-row-num">#</th>
+            ${cols.map((c) => `<th>${escHtml(c.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase()))}</th>`).join("")}
+          </tr></thead>
+          <tbody>`;
+
+    sh._allRows.forEach((row, ri) => {
+      html += `<tr data-sheet="${ti}" data-row="${ri}">
+        <td class="excel-review-chk-col"><input type="checkbox" class="excel-review-chk" data-sheet="${ti}" data-row="${ri}" onchange="excelReviewUpdateSelection()"></td>
+        <td class="excel-review-row-num">${ri + 1}</td>`;
+      cols.forEach((c) => {
+        const val = row[c] != null ? String(row[c]) : "";
+        html += `<td class="excel-review-cell" contenteditable="true" data-sheet="${ti}" data-row="${ri}" data-col="${c}" title="Click to edit">${escHtml(val)}</td>`;
+      });
+      html += `</tr>`;
+    });
+
+    html += `</tbody></table></div></div>`;
+  });
+
+  container.innerHTML = html;
+
+  // Store reference for edits
+  window._excelReviewSheets = selectedSheets;
+
+  // Show import button
+  const nextBtn = document.getElementById("excel-next-btn");
+  nextBtn.style.display = "";
+  nextBtn.innerHTML = `📥 Import ${selectedSheets.reduce((s, sh) => s + sh._allRows.length, 0).toLocaleString()} Records`;
+
+  // Listen for cell edits
+  container.addEventListener("input", (e) => {
+    if (e.target.classList.contains("excel-review-cell")) {
+      const si = parseInt(e.target.dataset.sheet);
+      const ri = parseInt(e.target.dataset.row);
+      const col = e.target.dataset.col;
+      const sheets = window._excelReviewSheets;
+      if (sheets && sheets[si] && sheets[si]._allRows[ri]) {
+        sheets[si]._allRows[ri][col] = e.target.textContent.trim();
+      }
+    }
+  });
+
+  excelReviewUpdateTotals();
+}
+
+function excelReviewSwitchTab(tabIdx) {
+  const tabs = document.querySelectorAll(".excel-review-tab");
+  const panels = document.querySelectorAll(".excel-review-sheet");
+  tabs.forEach((t, i) => t.classList.toggle("active", i === tabIdx));
+  panels.forEach((p, i) => (p.style.display = i === tabIdx ? "" : "none"));
+}
+
+function excelReviewToggleAll(sheetIdx, checked) {
+  document
+    .querySelectorAll(`.excel-review-chk[data-sheet="${sheetIdx}"]`)
+    .forEach((cb) => {
+      cb.checked = checked;
+    });
+  excelReviewUpdateSelection();
+}
+
+function excelReviewUpdateSelection() {
+  const checked = document.querySelectorAll(".excel-review-chk:checked");
+  const deleteBtn = document.getElementById("excel-review-delete-btn");
+  if (deleteBtn) {
+    deleteBtn.disabled = checked.length === 0;
+    deleteBtn.textContent =
+      checked.length > 0
+        ? `🗑 Delete Selected (${checked.length})`
+        : "🗑 Delete Selected";
+  }
+}
+
+function excelReviewDeleteSelected() {
+  const checked = document.querySelectorAll(".excel-review-chk:checked");
+  if (checked.length === 0) return;
+
+  // Group deletions by sheet
+  const deletions = {};
+  checked.forEach((cb) => {
+    const si = parseInt(cb.dataset.sheet);
+    const ri = parseInt(cb.dataset.row);
+    if (!deletions[si]) deletions[si] = new Set();
+    deletions[si].add(ri);
+  });
+
+  // Remove rows from data (in reverse order to preserve indices)
+  const sheets = window._excelReviewSheets;
+  for (const [siStr, rowSet] of Object.entries(deletions)) {
+    const si = parseInt(siStr);
+    if (!sheets[si]) continue;
+    const sortedRows = [...rowSet].sort((a, b) => b - a);
+    sortedRows.forEach((ri) => {
+      sheets[si]._allRows.splice(ri, 1);
+    });
+    // Also update the parent data
+    const parentSheet = window._excelImportData.sheets.find(
+      (s) => s.sheetName === sheets[si].sheetName,
+    );
+    if (parentSheet) {
+      parentSheet._allRows = sheets[si]._allRows;
+      parentSheet.rowCount = sheets[si]._allRows.length;
+    }
+  }
+
+  // Rebuild the review tables
+  buildExcelReviewStep(window._excelImportData);
+  showToast(`Removed ${checked.length} row(s)`, "info");
+}
+
+function excelReviewUpdateTotals() {
+  const sheets = window._excelReviewSheets;
+  if (!sheets) return;
+  const total = sheets.reduce((s, sh) => s + sh._allRows.length, 0);
+  const el = document.getElementById("excel-review-totals");
+  if (el) el.textContent = `${total.toLocaleString()} total rows`;
+  // Update tab counts
+  sheets.forEach((sh, ti) => {
+    const countEl = document.getElementById(`excel-review-count-${ti}`);
+    if (countEl) countEl.textContent = `(${sh._allRows.length})`;
+  });
+  // Update import button
+  const nextBtn = document.getElementById("excel-next-btn");
+  if (nextBtn && window._excelWizardStep === 2) {
+    nextBtn.innerHTML = `📥 Import ${total.toLocaleString()} Records`;
+    nextBtn.disabled = total === 0;
+  }
+}
+
+/** Build preview table HTML for an Excel sheet */
+function buildExcelPreviewTable(sheet) {
+  if (!sheet || !sheet.preview || sheet.preview.length === 0) return "";
+  const cols = sheet.columnsFound.slice(0, 10);
+  let html = `<div class="excel-preview-table-wrap"><table class="excel-preview-table"><thead><tr>`;
+  html += `<th style="color:var(--text-dim)">#</th>`;
+  cols.forEach((c) => {
+    const label = c
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (ch) => ch.toUpperCase());
+    html += `<th>${escHtml(label)}</th>`;
+  });
+  html += "</tr></thead><tbody>";
+  sheet.preview.slice(0, 8).forEach((row, i) => {
+    html += `<tr><td style="color:var(--text-dim);font-size:10px">${i + 1}</td>`;
+    cols.forEach((c) => {
+      const val = row[c] || "";
+      html += `<td title="${escHtml(String(val))}">${escHtml(String(val))}</td>`;
+    });
+    html += "</tr>";
+  });
+  html += "</tbody></table></div>";
+  if (sheet.rowCount > 8) {
+    html += `<div style="text-align:center;padding:6px;font-size:11px;color:var(--text-dim)">
+      Showing 8 of ${sheet.rowCount.toLocaleString()} rows
+    </div>`;
+  }
+  return html;
+}
+
+/** Update preview when sheet selection changes */
+function excelPreviewUpdate() {
+  const data = window._excelImportData;
+  if (!data) return;
+
+  let totalRows = 0;
+  const summaryParts = [];
+  let firstSelectedSheet = null;
+
+  data.sheets.forEach((sh, idx) => {
+    const cb = document.getElementById(`excel-sh-${idx}`);
+    if (cb && cb.checked && sh.rowCount > 0) {
+      totalRows += sh.rowCount;
+      summaryParts.push(`${sh.sheetName}: ${sh.rowCount.toLocaleString()}`);
+      if (!firstSelectedSheet) firstSelectedSheet = sh;
+    }
+  });
+
+  // Update total count
+  const totalEl = document.getElementById("excel-total-count");
+  if (totalEl) totalEl.textContent = totalRows.toLocaleString();
+
+  // Update sheet summary
+  const summaryEl = document.getElementById("excel-sheet-summary");
+  if (summaryEl)
+    summaryEl.innerHTML =
+      summaryParts.join(" &middot; ") || "No sheets selected";
+
+  // Update import button
+  const btn = document.getElementById("excel-import-btn");
+  if (btn) {
+    btn.disabled = totalRows === 0;
+    btn.innerHTML =
+      totalRows > 0
+        ? `📥 Import ${totalRows.toLocaleString()} Records`
+        : "📥 No Records Selected";
+  }
+
+  // Update preview to show first selected sheet
+  const previewArea = document.getElementById("excel-preview-area");
+  if (previewArea) {
+    previewArea.innerHTML =
+      buildExcelPreviewTable(firstSelectedSheet) ||
+      '<div class="excel-no-preview">Select a sheet to see preview</div>';
+  }
+}
+
+/** Execute the Excel import with selected options */
+async function executeExcelImport() {
+  const data = window._excelImportData;
+  if (!data) return;
+
+  const category = document.getElementById("excel-import-cat").value;
+  const year = parseInt(document.getElementById("excel-import-year").value);
+
+  if (!year || year < 2000 || year > 2100) {
+    showToast("Please enter a valid year (2000-2100)", "error");
+    return;
+  }
+
+  const sheetsToImport = [];
+  data.sheets.forEach((sh, idx) => {
+    const checkbox = document.getElementById(`excel-sh-${idx}`);
+    if (checkbox && checkbox.checked) {
+      const quarter = parseInt(
+        document.getElementById(`excel-sq-${idx}`).value,
+      );
+      const entry = { sheetName: sh.sheetName, quarter };
+      // If we have edited rows from the review step, include them
+      if (sh._allRows) entry.rows = sh._allRows;
+      sheetsToImport.push(entry);
+    }
+  });
+
+  if (sheetsToImport.length === 0) {
+    showToast("No sheets selected for import", "error");
+    return;
+  }
+
+  const totalRows = sheetsToImport.reduce((s, si) => {
+    if (si.rows) return s + si.rows.length;
+    const sh = data.sheets.find((d) => d.sheetName === si.sheetName);
+    return s + (sh ? sh.rowCount : 0);
+  }, 0);
+
+  const btn = document.getElementById("excel-next-btn");
+  btn.disabled = true;
+  btn.innerHTML = `<span class="excel-btn-spinner"></span> Importing ${totalRows.toLocaleString()} records...`;
+
+  try {
+    const result = await api("/api/records/excel-import", {
+      method: "POST",
+      body: JSON.stringify({
+        category,
+        year,
+        tempId: data.tempId,
+        sheets: sheetsToImport,
+        ffillCols: ["tentative_date", "group_name", "coordinating_officer"],
+      }),
+    });
+
+    document.getElementById("excel-import-overlay")?.remove();
+    window._excelImportData = null;
+    window._excelReviewSheets = null;
+    window._excelWizardStep = 1;
+
+    // Show success summary
+    showExcelImportSuccess(result, data.filename, category, year);
+
+    // Reload tree and workspace
+    state.recCategory = category;
+    state.recYear = year;
+    state.recExpandedNodes[category] = true;
+    state.recExpandedNodes[`${category}_${year}`] = true;
+    await renderRecordsTreeSidebar();
+    if (state.recQuarter) await loadRecordsWorkspace();
+    recLoadAdminPanel();
+  } catch (e) {
+    btn.disabled = false;
+    btn.innerHTML = `📥 Import ${totalRows.toLocaleString()} Records`;
+    showToast("Import failed: " + e.message, "error");
+  }
+}
+
+/** Show import success summary */
+function showExcelImportSuccess(result, filename, category, year) {
+  const catLabels = {
+    applications_received: "Applications Received",
+    permitted_applications: "Permitted Applications",
+    monitoring_records: "Monitoring Records",
+  };
+  let sheetDetails = "";
+  if (result.sheetResults) {
+    result.sheetResults.forEach((sr) => {
+      const icon = sr.inserted > 0 ? "✅" : sr.error ? "⚠️" : "➖";
+      const detail =
+        sr.error || `${sr.inserted.toLocaleString()} records (Q${sr.quarter})`;
+      sheetDetails += `<div style="padding:4px 0;font-size:13px">${icon} <strong>${escHtml(sr.sheetName)}</strong>: ${detail}</div>`;
+    });
+  }
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (e) => {
+    if (e.target === overlay) overlay.remove();
+  };
+  overlay.innerHTML = `<div class="modal" style="width:500px;text-align:center;padding:30px">
+    <div style="font-size:48px;margin-bottom:12px">✅</div>
+    <h3 style="margin:0 0 8px;color:var(--text-white)">Import Complete!</h3>
+    <p style="color:var(--text-muted);font-size:13px;margin:0 0 16px">
+      <strong>${result.totalInserted.toLocaleString()}</strong> records imported from
+      <strong>${escHtml(filename)}</strong>
+    </p>
+    <div style="background:var(--bg-tertiary);border-radius:var(--radius-sm);padding:12px;text-align:left;margin-bottom:16px">
+      <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px">Import Details</div>
+      <div style="font-size:13px;color:var(--text-primary);margin-bottom:8px">
+        Category: <strong>${catLabels[category] || category}</strong> &middot; Year: <strong>${year}</strong>
+      </div>
+      ${sheetDetails}
+    </div>
+    <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove()">Done</button>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+/** Trigger file picker for Excel upload */
+function recShowExcelUploadPicker() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".xlsx,.xls";
+  input.style.display = "none";
+  document.body.appendChild(input);
+  input.onchange = async () => {
+    if (input.files?.[0]) await recHandleExcelUpload(input.files[0]);
+    input.remove();
+  };
+  input.click();
+}
+
+/** Upload Excel with a pre-selected category from the Settings Data Management page */
+function recUploadExcelForCategory() {
+  const sel = document.getElementById("rec-upload-category");
+  if (!sel) {
+    showToast("Please select a record type first", "error");
+    return;
+  }
+  const category = sel.value;
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".xlsx,.xls";
+  input.style.display = "none";
+  document.body.appendChild(input);
+  input.onchange = async () => {
+    if (input.files?.[0]) await recHandleExcelUpload(input.files[0], category);
+    input.remove();
+  };
+  input.click();
+}
+
+/** Scan workspace for Excel files and bulk-import them all */
+async function recScanAndImportAll() {
+  if (
+    !confirm(
+      "This will scan the workspace folder for all Excel files and import them.\n\nExisting records will NOT be duplicated — new records will be appended.\n\nContinue?",
+    )
+  )
+    return;
+  showToast("Scanning Excel files...", "info");
+  try {
+    const result = await api("/api/records/excel-scan", { method: "POST" });
+    if (result.grandTotal === 0) {
+      showToast("No data found in Excel files", "info");
+      return;
+    }
+    let summary = `Imported ${result.grandTotal.toLocaleString()} records from ${result.files.length} file(s):\n\n`;
+    result.files.forEach((f) => {
+      summary += `• ${f.filename}: ${(f.totalInserted || 0).toLocaleString()} records\n`;
+    });
+    showToast(
+      `Imported ${result.grandTotal.toLocaleString()} records from ${result.files.length} files`,
+      "success",
+    );
+    showExcelScanResultsModal(result);
+    // Refresh tree and admin panel
+    await renderRecordsTreeSidebar();
+    recLoadAdminPanel();
+  } catch (e) {
+    showToast("Scan import failed: " + e.message, "error");
+  }
+}
+
+/** Show results modal after scan import */
+function showExcelScanResultsModal(result) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (e) => {
+    if (e.target === overlay) overlay.remove();
+  };
+
+  let filesHtml = "";
+  result.files.forEach((f) => {
+    const icon = f.error ? "❌" : "✅";
+    filesHtml += `<div class="excel-scan-file">
+      <span class="excel-scan-icon">${icon}</span>
+      <span class="excel-scan-name">${escHtml(f.filename)}</span>
+      <span class="excel-scan-count">${f.error ? escHtml(f.error) : `${(f.totalInserted || 0).toLocaleString()} records`}</span>
+    </div>`;
+    if (f.sheets) {
+      f.sheets.forEach((sh) => {
+        filesHtml += `<div class="excel-scan-sheet">
+          <span class="excel-scan-sheet-name">↳ ${escHtml(sh.sheetName)} (Q${sh.quarter || "?"})</span>
+          <span class="excel-scan-count">${sh.error ? escHtml(sh.error) : `${sh.inserted} rows`}</span>
+        </div>`;
+      });
+    }
+  });
+
+  overlay.innerHTML = `<div class="modal" style="width:620px;max-height:80vh;display:flex;flex-direction:column">
+    <div class="modal-header">
+      <h3 style="margin:0">📊 Excel Scan Import Results</h3>
+      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:20px;overflow-y:auto;flex:1">
+      <div class="excel-scan-summary">
+        <strong>${result.grandTotal.toLocaleString()}</strong> total records imported from <strong>${result.files.length}</strong> file(s)
+      </div>
+      <div class="excel-scan-files">${filesHtml}</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove()">Done</button>
+    </div>
+  </div>`;
+
+  document.body.appendChild(overlay);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  RECORDS ADMIN DATA MANAGEMENT
+// ══════════════════════════════════════════════════════════════
+
+/** Show admin data management modal for the current quarter view */
+async function recShowAdminPanel() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.id = "rec-admin-overlay";
+  overlay.onclick = (e) => {
+    if (e.target === overlay) overlay.remove();
+  };
+
+  overlay.innerHTML = `<div class="modal" style="width:900px;max-height:92vh;display:flex;flex-direction:column">
+    <div class="modal-header">
+      <h3 style="margin:0">⚙️ Records Data Management</h3>
+      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:0;overflow-y:auto;flex:1" id="rec-admin-body">
+      <div class="loading">Loading stats...</div>
+    </div>
+  </div>`;
+
+  document.body.appendChild(overlay);
+  await recLoadAdminPanel();
+}
+
+async function recLoadAdminPanel(targetId) {
+  const body =
+    document.getElementById(targetId || "rec-admin-body") ||
+    document.getElementById("rec-settings-admin-body");
+  if (!body) return;
+  try {
+    const stats = await api("/api/records/admin/stats");
+    let html = "";
+
+    // Summary header
+    html += `<div class="rec-admin-header">
+      <div class="rec-admin-stat-card">
+        <div class="rec-admin-stat-val">${(stats.total || 0).toLocaleString()}</div>
+        <div class="rec-admin-stat-label">Total Records</div>
+      </div>
+    </div>`;
+
+    // Group stats by category
+    const grouped = {};
+    for (const s of stats.stats) {
+      if (!grouped[s.category]) grouped[s.category] = [];
+      grouped[s.category].push(s);
+    }
+
+    for (const cat of [
+      "applications_received",
+      "permitted_applications",
+      "monitoring_records",
+    ]) {
+      const catLabel = REC_CATEGORY_LABELS[cat] || cat;
+      const entries = grouped[cat] || [];
+      const catTotal = entries.reduce((s, e) => s + e.cnt, 0);
+
+      html += `<div class="rec-admin-category">
+        <div class="rec-admin-cat-header">
+          <span class="rec-admin-cat-title">${catLabel}</span>
+          <span class="rec-admin-cat-count">${catTotal.toLocaleString()} records</span>
+          ${catTotal > 0 ? `<button class="btn btn-sm btn-danger" onclick="recAdminBulkDelete('${cat}',null,null,'${catLabel}',${catTotal})">🗑 Delete All</button>` : ""}
+        </div>`;
+
+      if (entries.length === 0) {
+        html += '<div class="rec-admin-empty">No records imported</div>';
+      } else {
+        html +=
+          '<table class="rec-admin-table"><thead><tr><th>Year</th><th>Quarter</th><th>Records</th><th>First Import</th><th>Last Import</th><th>Actions</th></tr></thead><tbody>';
+        entries.forEach((e) => {
+          html += `<tr>
+            <td>${e.year}</td>
+            <td>Q${e.quarter}</td>
+            <td><strong>${e.cnt.toLocaleString()}</strong></td>
+            <td>${e.first_import ? new Date(e.first_import).toLocaleDateString() : "-"}</td>
+            <td>${e.last_import ? new Date(e.last_import).toLocaleDateString() : "-"}</td>
+            <td style="display:flex;gap:4px">
+              <button class="btn btn-xs" onclick="recAdminBrowseRecords('${cat}',${e.year},${e.quarter})" title="Browse & select records to delete">📋 Browse</button>
+              <button class="btn btn-xs btn-danger" onclick="recAdminBulkDelete('${cat}',${e.year},${e.quarter},'${catLabel} ${e.year} Q${e.quarter}',${e.cnt})">🗑 Delete</button>
+            </td>
+          </tr>`;
+        });
+        html += "</tbody></table>";
+      }
+      html += "</div>";
+    }
+
+    body.innerHTML = html;
+  } catch (e) {
+    body.innerHTML = `<div class="rec-admin-error">Error loading stats: ${e.message}</div>`;
+  }
+}
+
+/** Browse records for a specific category/year/quarter and allow selective deletion */
+async function recAdminBrowseRecords(category, year, quarter) {
+  const catLabel = REC_CATEGORY_LABELS[category] || category;
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.id = "rec-browse-overlay";
+  overlay.onclick = (e) => {
+    if (e.target === overlay) overlay.remove();
+  };
+  overlay.innerHTML = `<div class="modal" style="width:900px;max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-header">
+      <h3 style="margin:0">📋 ${escHtml(catLabel)} — ${year} Q${quarter}</h3>
+      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:20px;overflow-y:auto;flex:1">
+      <div style="text-align:center;padding:40px">
+        <div class="excel-loading-spinner"></div>
+        <p style="color:var(--text-muted);font-size:13px">Loading records...</p>
+      </div>
+    </div>
+    <div class="modal-footer" style="gap:8px">
+      <button class="btn" onclick="this.closest('.modal-overlay').remove()">Close</button>
+      <button class="btn btn-danger" id="rec-browse-delete-btn" disabled onclick="recAdminDeleteSelected('${category}',${year},${quarter})">🗑 Delete Selected</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  try {
+    const data = await api(
+      `/api/records/entries/${category}/${year}/${quarter}`,
+    );
+    const rows = data.rows || [];
+    const body = overlay.querySelector(".modal-body");
+
+    if (rows.length === 0) {
+      body.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-dim)">No records found.</div>`;
+      return;
+    }
+
+    // Determine display columns (show key fields)
+    const displayCols = [
+      "company_name",
+      "sector",
+      "location",
+      "district",
+      "permit_number",
+      "tentative_date",
+      "group_name",
+    ].filter((c) => rows.some((r) => r[c]));
+    if (displayCols.length === 0) {
+      // Fallback: show first few non-system columns
+      const skip = new Set([
+        "id",
+        "category",
+        "year",
+        "quarter",
+        "created_at",
+        "updated_at",
+        "created_by",
+      ]);
+      Object.keys(rows[0]).forEach((k) => {
+        if (!skip.has(k) && displayCols.length < 6) displayCols.push(k);
+      });
+    }
+
+    let html = `<div class="rec-browse-toolbar">
+      <label class="rec-browse-select-all">
+        <input type="checkbox" id="rec-browse-all-chk" onchange="recBrowseToggleAll(this.checked)">
+        <span>Select All</span>
+      </label>
+      <span class="rec-browse-count" id="rec-browse-count">${rows.length.toLocaleString()} records</span>
+      <input type="text" id="rec-browse-search" placeholder="Search records..." class="rec-browse-search-input" oninput="recBrowseFilter(this.value)">
+    </div>`;
+
+    html += `<div class="excel-review-table-wrap"><table class="excel-review-table" id="rec-browse-tbl">
+      <thead><tr>
+        <th style="width:36px"><input type="checkbox" onchange="recBrowseToggleAll(this.checked)"></th>
+        <th style="width:36px">#</th>
+        ${displayCols.map((c) => `<th>${escHtml(c.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase()))}</th>`).join("")}
+      </tr></thead>
+      <tbody>`;
+
+    rows.forEach((row, i) => {
+      html += `<tr data-rec-id="${row.id}">
+        <td><input type="checkbox" class="rec-browse-chk" value="${row.id}" onchange="recBrowseUpdateCount()"></td>
+        <td style="color:var(--text-dim);font-size:10px">${i + 1}</td>`;
+      displayCols.forEach((c) => {
+        const val = row[c] != null ? String(row[c]) : "";
+        html += `<td title="${escHtml(val)}">${escHtml(val)}</td>`;
+      });
+      html += `</tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+    body.innerHTML = html;
+  } catch (e) {
+    overlay.querySelector(".modal-body").innerHTML =
+      `<div style="text-align:center;padding:40px;color:var(--red)">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function recBrowseToggleAll(checked) {
+  document.querySelectorAll(".rec-browse-chk").forEach((cb) => {
+    if (cb.closest("tr").style.display !== "none") cb.checked = checked;
+  });
+  recBrowseUpdateCount();
+}
+
+function recBrowseUpdateCount() {
+  const checked = document.querySelectorAll(".rec-browse-chk:checked");
+  const btn = document.getElementById("rec-browse-delete-btn");
+  if (btn) {
+    btn.disabled = checked.length === 0;
+    btn.textContent =
+      checked.length > 0
+        ? `🗑 Delete Selected (${checked.length})`
+        : "🗑 Delete Selected";
+  }
+}
+
+function recBrowseFilter(query) {
+  const q = query.toLowerCase();
+  document.querySelectorAll("#rec-browse-tbl tbody tr").forEach((tr) => {
+    const text = tr.textContent.toLowerCase();
+    tr.style.display = text.includes(q) ? "" : "none";
+  });
+}
+
+async function recAdminDeleteSelected(category, year, quarter) {
+  const checked = document.querySelectorAll(".rec-browse-chk:checked");
+  if (checked.length === 0) return;
+
+  const ids = Array.from(checked).map((cb) => parseInt(cb.value));
+  if (
+    !confirm(
+      `Delete ${ids.length} selected record(s)?\n\nThis action cannot be undone.`,
+    )
+  )
+    return;
+
+  try {
+    const result = await api("/api/records/admin/delete-selected", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    });
+    showToast(`Deleted ${result.deleted} record(s)`, "success");
+    document.getElementById("rec-browse-overlay")?.remove();
+    await recLoadAdminPanel();
+    await renderRecordsTreeSidebar();
+    if (
+      state.recCategory === category &&
+      state.recYear === year &&
+      state.recQuarter === quarter
+    ) {
+      await loadRecordsWorkspace();
+    }
+  } catch (e) {
+    showToast("Delete failed: " + e.message, "error");
+  }
+}
+
+async function recAdminBulkDelete(category, year, quarter, label, count) {
+  if (
+    !confirm(
+      `Delete ${count.toLocaleString()} records from "${label}"?\n\nThis action cannot be undone.`,
+    )
+  )
+    return;
+  try {
+    const body = { category };
+    if (year) body.year = year;
+    if (quarter) body.quarter = quarter;
+    const result = await api("/api/records/admin/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    showToast(`Deleted ${result.deleted.toLocaleString()} records`, "success");
+    await recLoadAdminPanel();
+    await renderRecordsTreeSidebar();
+  } catch (e) {
+    showToast("Delete failed: " + e.message, "error");
+  }
+}
+
 // ── Export CSV ─────────────────────────────────────────────────
 async function recExportCSV() {
   try {
-    const data = await api(`/api/records/entries/${state.recCategory}/${state.recYear}/${state.recQuarter}`);
-    if (data.rows.length === 0) { showToast('No records to export', 'info'); return; }
-    const allFields = REC_FIELD_SECTIONS.flatMap(s => s.fields);
-    const headers = allFields.map(f => f.label);
-    const csvRows = [headers.join(',')];
-    data.rows.forEach(row => {
-      csvRows.push(allFields.map(f => {
-        const v = row[f.key];
-        if (v === null || v === undefined) return '';
-        const s = String(v);
-        return s.includes(',') ? `"${s}"` : s;
-      }).join(','));
+    const data = await api(
+      `/api/records/entries/${state.recCategory}/${state.recYear}/${state.recQuarter}`,
+    );
+    if (data.rows.length === 0) {
+      showToast("No records to export", "info");
+      return;
+    }
+    const allFields = REC_FIELD_SECTIONS.flatMap((s) => s.fields);
+    const headers = allFields.map((f) => f.label);
+    const csvRows = [headers.join(",")];
+    data.rows.forEach((row) => {
+      csvRows.push(
+        allFields
+          .map((f) => {
+            const v = row[f.key];
+            if (v === null || v === undefined) return "";
+            const s = String(v);
+            return s.includes(",") ? `"${s}"` : s;
+          })
+          .join(","),
+      );
     });
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `${state.recCategory}_${state.recYear}_Q${state.recQuarter}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   } catch (e) {
-    showToast(e.message, 'error');
+    showToast(e.message, "error");
   }
 }
 
 // ══════════════════════════════════════════════════════════════
 //  RECORDS ANALYTICS DASHBOARD
 // ══════════════════════════════════════════════════════════════
-async function renderRecordsAnalyticsView() {
-  const sidebar = document.getElementById('sidebar-content');
+async function renderRecordsAnalyticsView(filterYear, filterSector) {
+  const sidebar = document.getElementById("sidebar-content");
   sidebar.innerHTML = `<div class="sidebar-item active" onclick="switchView('recordsAnalytics')"><span class="icon">📈</span><span class="label">Analytics Overview</span></div>
   <div class="sidebar-item" onclick="switchView('records')"><span class="icon">📂</span><span class="label">Records Explorer</span></div>`;
-  const tabBar = document.getElementById('tab-bar');
+  const tabBar = document.getElementById("tab-bar");
   tabBar.innerHTML = '<div class="tab-item active">📈 Records Analytics</div>';
-  const content = document.getElementById('content');
+  const content = document.getElementById("content");
   content.innerHTML = '<div class="loading">Loading analytics...</div>';
   try {
-    const data = await api('/api/records/analytics');
-    let html = '';
-    // Filters
-    html += `<div class="rec-analytics-filters">
-      <div class="rec-analytics-title">Records Analytics</div>
-      <div class="rec-analytics-controls">
-        <select id="rec-an-year" onchange="recAnalyticsFilter()" class="rec-an-select">
-          <option value="">All Years</option>
-          ${(data.years || []).map(y => `<option value="${y}">${y}</option>`).join('')}
-        </select>
-        <select id="rec-an-sector" onchange="recAnalyticsFilter()" class="rec-an-select">
-          <option value="">All Sectors</option>
-          ${(data.sectors || []).map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('')}
-        </select>
-      </div>
-    </div>`;
-    // KPI Cards
-    const received = (data.categoryTotals.find(c => c.category === 'applications_received') || {}).cnt || 0;
-    const permitted = (data.categoryTotals.find(c => c.category === 'permitted_applications') || {}).cnt || 0;
-    const monitoring = (data.categoryTotals.find(c => c.category === 'monitoring_records') || {}).cnt || 0;
+    const params = new URLSearchParams();
+    if (filterYear) params.set("year", filterYear);
+    if (filterSector) params.set("sector", filterSector);
+    const data = await api(`/api/records/analytics?${params}`);
+    let html = '<div class="rec-analytics-wrap">';
+
+    // ── Welcome Banner ──
+    const received =
+      (
+        data.categoryTotals.find(
+          (c) => c.category === "applications_received",
+        ) || {}
+      ).cnt || 0;
+    const permitted =
+      (
+        data.categoryTotals.find(
+          (c) => c.category === "permitted_applications",
+        ) || {}
+      ).cnt || 0;
+    const monitoring =
+      (
+        data.categoryTotals.find((c) => c.category === "monitoring_records") ||
+        {}
+      ).cnt || 0;
     const total = received + permitted + monitoring;
-    html += `<div class="rec-an-kpis">
-      <div class="rec-an-kpi rec-an-kpi--blue"><div class="rec-an-kpi-val">${total.toLocaleString()}</div><div class="rec-an-kpi-label">Total Records</div></div>
-      <div class="rec-an-kpi rec-an-kpi--orange"><div class="rec-an-kpi-val">${received.toLocaleString()}</div><div class="rec-an-kpi-label">Applications Received</div></div>
-      <div class="rec-an-kpi rec-an-kpi--green"><div class="rec-an-kpi-val">${permitted.toLocaleString()}</div><div class="rec-an-kpi-label">Permitted</div></div>
-      <div class="rec-an-kpi rec-an-kpi--purple"><div class="rec-an-kpi-val">${monitoring.toLocaleString()}</div><div class="rec-an-kpi-label">Monitoring</div></div>
+
+    html += `<div class="dash-welcome">
+      <div class="dash-welcome-left">
+        <div>
+          <h2 class="dash-welcome-title">Records Analytics</h2>
+          <p class="dash-welcome-sub">Environmental records overview and insights</p>
+        </div>
+      </div>
+      <div class="dash-welcome-stats">
+        <div class="dash-mini-stat"><span class="dash-mini-val">${total.toLocaleString()}</span><span class="dash-mini-lbl">Total</span></div>
+        <div class="dash-mini-stat"><span class="dash-mini-val">${received.toLocaleString()}</span><span class="dash-mini-lbl">Received</span></div>
+        <div class="dash-mini-stat"><span class="dash-mini-val">${permitted.toLocaleString()}</span><span class="dash-mini-lbl">Permitted</span></div>
+        <div class="dash-mini-stat"><span class="dash-mini-val">${monitoring.toLocaleString()}</span><span class="dash-mini-lbl">Monitoring</span></div>
+      </div>
     </div>`;
-    // Fulfillment Funnel
-    const funnelPct = data.funnel.received > 0 ? Math.round((data.funnel.permitted / data.funnel.received) * 100) : 0;
-    html += `<div class="rec-an-row">
-      <div class="rec-an-card rec-an-card-half">
-        <div class="rec-an-card-title">Fulfillment Funnel</div>
-        <div class="rec-an-funnel">
-          <div class="rec-an-funnel-bar" style="width:100%;background:var(--orange-bg);border:1px solid var(--orange)">
-            <span>Received: ${data.funnel.received}</span>
+
+    // ── Filters ──
+    html += `<div class="rec-an-filters-bar">
+      <select id="rec-an-year" onchange="recAnalyticsFilter()" class="rec-an-select">
+        <option value="">All Years</option>
+        ${(data.years || []).map((y) => `<option value="${y}" ${filterYear == y ? "selected" : ""}>${y}</option>`).join("")}
+      </select>
+      <select id="rec-an-sector" onchange="recAnalyticsFilter()" class="rec-an-select">
+        <option value="">All Sectors</option>
+        ${(data.sectors || []).map((s) => `<option value="${escHtml(s)}" ${filterSector === s ? "selected" : ""}>${escHtml(s)}</option>`).join("")}
+      </select>
+    </div>`;
+
+    // ── Key Metrics ──
+    html += `<div class="dash-section">
+      <div class="dash-section-hdr"><span class="dash-section-title">Key Metrics</span></div>
+      <div class="dash-metrics-grid">
+        <div class="dash-metric dash-metric--blue">
+          <div class="dash-metric-top"><span class="dash-metric-icon">📊</span></div>
+          <div class="dash-metric-value">${total.toLocaleString()}</div>
+          <div class="dash-metric-label">Total Records</div>
+          <div class="dash-metric-bar"><div class="dash-metric-bar-fill"></div></div>
+        </div>
+        <div class="dash-metric dash-metric--orange">
+          <div class="dash-metric-top"><span class="dash-metric-icon">📋</span></div>
+          <div class="dash-metric-value">${received.toLocaleString()}</div>
+          <div class="dash-metric-label">Applications Received</div>
+          <div class="dash-metric-bar"><div class="dash-metric-bar-fill"></div></div>
+        </div>
+        <div class="dash-metric dash-metric--green">
+          <div class="dash-metric-top"><span class="dash-metric-icon">✅</span></div>
+          <div class="dash-metric-value">${permitted.toLocaleString()}</div>
+          <div class="dash-metric-label">Permitted Applications</div>
+          <div class="dash-metric-bar"><div class="dash-metric-bar-fill"></div></div>
+        </div>
+        <div class="dash-metric dash-metric--purple">
+          <div class="dash-metric-top"><span class="dash-metric-icon">🔬</span></div>
+          <div class="dash-metric-value">${monitoring.toLocaleString()}</div>
+          <div class="dash-metric-label">Monitoring Records</div>
+          <div class="dash-metric-bar"><div class="dash-metric-bar-fill"></div></div>
+        </div>
+      </div>
+    </div>`;
+
+    // ── Fulfillment & Status ──
+    const funnelPct =
+      data.funnel.received > 0
+        ? Math.round((data.funnel.permitted / data.funnel.received) * 100)
+        : 0;
+    html += `<div class="dash-section">
+      <div class="dash-section-hdr"><span class="dash-section-title">Fulfillment & Status</span></div>
+      <div class="dash-charts-grid">
+        <div class="dash-chart-card">
+          <div class="dash-chart-hdr">Fulfillment Funnel</div>
+          <div class="rec-an-funnel">
+            <div class="rec-an-funnel-bar" style="width:100%;background:var(--orange-bg);border:1px solid var(--orange)">
+              <span>Received: ${data.funnel.received.toLocaleString()}</span>
+            </div>
+            <div class="rec-an-funnel-bar" style="width:${Math.max(funnelPct, 8)}%;background:var(--green-bg);border:1px solid var(--green)">
+              <span>Permitted: ${data.funnel.permitted.toLocaleString()} (${funnelPct}%)</span>
+            </div>
           </div>
-          <div class="rec-an-funnel-bar" style="width:${Math.max(funnelPct, 5)}%;background:var(--green-bg);border:1px solid var(--green)">
-            <span>Permitted: ${data.funnel.permitted} (${funnelPct}%)</span>
+        </div>
+        <div class="dash-chart-card">
+          <div class="dash-chart-hdr">Status Distribution</div>
+          <div class="rec-an-status-list">
+            ${data.statusDistribution
+              .map((s) => {
+                const pct = total > 0 ? Math.round((s.cnt / total) * 100) : 0;
+                return `<div class="rec-an-status-row">
+                <span class="rec-status-chip ${recGetStatusClass(s.status)}">${escHtml(s.status || "Unknown")}</span>
+                <div class="rec-an-bar-track"><div class="rec-an-bar-fill" style="width:${pct}%"></div></div>
+                <span class="rec-an-bar-val">${s.cnt}</span>
+              </div>`;
+              })
+              .join("")}
           </div>
         </div>
       </div>
-      <div class="rec-an-card rec-an-card-half">
-        <div class="rec-an-card-title">Status Distribution</div>
-        <div class="rec-an-status-list">
-          ${data.statusDistribution.map(s => {
-            const pct = total > 0 ? Math.round((s.cnt / total) * 100) : 0;
-            return `<div class="rec-an-status-row">
-              <span class="rec-status-chip ${recGetStatusClass(s.status)}">${escHtml(s.status || 'Unknown')}</span>
-              <div class="rec-an-bar-track"><div class="rec-an-bar-fill" style="width:${pct}%"></div></div>
-              <span class="rec-an-bar-val">${s.cnt}</span>
-            </div>`;
-          }).join('')}
+    </div>`;
+
+    // ── Charts ──
+    html += `<div class="dash-section">
+      <div class="dash-section-hdr"><span class="dash-section-title">Charts & Distributions</span></div>
+      <div class="dash-charts-grid">
+        <div class="dash-chart-card">
+          <div class="dash-chart-hdr">Sector Distribution</div>
+          <div class="rec-an-chart-wrap"><canvas id="rec-an-sector-chart"></canvas></div>
+        </div>
+        <div class="dash-chart-card">
+          <div class="dash-chart-hdr">Revenue by MMDA</div>
+          <div class="rec-an-chart-wrap"><canvas id="rec-an-revenue-chart"></canvas></div>
+        </div>
+        <div class="dash-chart-card dash-chart-card--wide">
+          <div class="dash-chart-hdr">Quarterly Volume</div>
+          <div class="rec-an-chart-wrap rec-an-chart-wrap--wide"><canvas id="rec-an-quarterly-chart"></canvas></div>
         </div>
       </div>
     </div>`;
-    // Sector Distribution & Revenue by MMDA
-    html += `<div class="rec-an-row">
-      <div class="rec-an-card rec-an-card-half">
-        <div class="rec-an-card-title">Sector Distribution</div>
-        <canvas id="rec-an-sector-chart" height="250"></canvas>
-      </div>
-      <div class="rec-an-card rec-an-card-half">
-        <div class="rec-an-card-title">Revenue by MMDA</div>
-        <canvas id="rec-an-revenue-chart" height="250"></canvas>
-      </div>
-    </div>`;
-    // Quarterly Volume
-    html += `<div class="rec-an-row">
-      <div class="rec-an-card">
-        <div class="rec-an-card-title">Quarterly Volume</div>
-        <canvas id="rec-an-quarterly-chart" height="200"></canvas>
-      </div>
-    </div>`;
+
+    html += "</div>"; // .rec-analytics-wrap
     content.innerHTML = html;
-    // Render charts
     recRenderAnalyticsCharts(data);
   } catch (e) {
     content.innerHTML = `<div class="empty-state"><div class="empty-title">Error</div><div class="empty-desc">${e.message}</div></div>`;
@@ -9842,89 +11558,145 @@ async function renderRecordsAnalyticsView() {
 }
 
 async function recAnalyticsFilter() {
-  const year = document.getElementById('rec-an-year')?.value || '';
-  const sector = document.getElementById('rec-an-sector')?.value || '';
-  const content = document.getElementById('content');
-  content.innerHTML = '<div class="loading">Updating analytics...</div>';
-  try {
-    const params = new URLSearchParams();
-    if (year) params.set('year', year);
-    if (sector) params.set('sector', sector);
-    const data = await api(`/api/records/analytics?${params}`);
-    // Re-render with same function but passing filters
-    renderRecordsAnalyticsView();
-  } catch (e) {
-    content.innerHTML = `<div style="padding:16px;color:var(--red)">${e.message}</div>`;
-  }
+  const year = document.getElementById("rec-an-year")?.value || "";
+  const sector = document.getElementById("rec-an-sector")?.value || "";
+  renderRecordsAnalyticsView(year, sector);
 }
 
 function recRenderAnalyticsCharts(data) {
-  // Check if Chart.js is available
-  if (typeof Chart === 'undefined') return;
+  if (typeof Chart === "undefined") return;
+  const chartOpts = {
+    responsive: true,
+    maintainAspectRatio: false,
+  };
   // Sector donut
-  const sectorCtx = document.getElementById('rec-an-sector-chart');
+  const sectorCtx = document.getElementById("rec-an-sector-chart");
   if (sectorCtx && data.sectorDistribution.length > 0) {
     new Chart(sectorCtx, {
-      type: 'doughnut',
+      type: "doughnut",
       data: {
-        labels: data.sectorDistribution.map(s => s.sector || 'Unknown'),
-        datasets: [{
-          data: data.sectorDistribution.map(s => s.cnt),
-          backgroundColor: ['#0078d4', '#4ec9b0', '#ce9178', '#dcdcaa', '#f14c4c', '#c586c0', '#4fc1ff', '#569cd6', '#d7ba7d', '#9cdcfe', '#608b4e', '#b5cea8', '#d4d4d4', '#e06c75', '#56b6c2'],
-        }]
+        labels: data.sectorDistribution.map((s) => s.sector || "Unknown"),
+        datasets: [
+          {
+            data: data.sectorDistribution.map((s) => s.cnt),
+            backgroundColor: [
+              "#3b82f6",
+              "#10b981",
+              "#f97316",
+              "#eab308",
+              "#ef4444",
+              "#8b5cf6",
+              "#14b8a6",
+              "#ec4899",
+              "#6366f1",
+              "#84cc16",
+              "#06b6d4",
+              "#f43f5e",
+              "#d97706",
+              "#64748b",
+              "#a855f7",
+            ],
+          },
+        ],
       },
       options: {
-        responsive: true,
-        plugins: { legend: { position: 'right', labels: { color: '#ccc', font: { size: 11 } } } }
-      }
+        ...chartOpts,
+        plugins: {
+          legend: {
+            position: "right",
+            labels: { color: "#ccc", font: { size: 11 }, padding: 8 },
+          },
+        },
+      },
     });
   }
   // Revenue bar chart
-  const revCtx = document.getElementById('rec-an-revenue-chart');
+  const revCtx = document.getElementById("rec-an-revenue-chart");
   if (revCtx && data.revenueByMmda.length > 0) {
     new Chart(revCtx, {
-      type: 'bar',
+      type: "bar",
       data: {
-        labels: data.revenueByMmda.map(r => r.mmda || 'Unknown'),
+        labels: data.revenueByMmda.map((r) => r.mmda || "Unknown"),
         datasets: [
-          { label: 'Processing Fees', data: data.revenueByMmda.map(r => r.proc_fees), backgroundColor: '#0078d4' },
-          { label: 'Permit Fees', data: data.revenueByMmda.map(r => r.perm_fees), backgroundColor: '#4ec9b0' },
-        ]
+          {
+            label: "Processing Fees",
+            data: data.revenueByMmda.map((r) => r.proc_fees),
+            backgroundColor: "#3b82f6",
+          },
+          {
+            label: "Permit Fees",
+            data: data.revenueByMmda.map((r) => r.perm_fees),
+            backgroundColor: "#10b981",
+          },
+        ],
       },
       options: {
-        responsive: true,
-        scales: { x: { ticks: { color: '#999', font: { size: 10 } }, grid: { color: '#333' } }, y: { ticks: { color: '#999' }, grid: { color: '#333' } } },
-        plugins: { legend: { labels: { color: '#ccc' } } }
-      }
+        ...chartOpts,
+        scales: {
+          x: {
+            ticks: { color: "#999", font: { size: 10 }, maxRotation: 45 },
+            grid: { color: "rgba(255,255,255,0.06)" },
+          },
+          y: {
+            ticks: { color: "#999" },
+            grid: { color: "rgba(255,255,255,0.06)" },
+          },
+        },
+        plugins: { legend: { labels: { color: "#ccc" } } },
+      },
     });
   }
   // Quarterly line chart
-  const qCtx = document.getElementById('rec-an-quarterly-chart');
+  const qCtx = document.getElementById("rec-an-quarterly-chart");
   if (qCtx && data.quarterlyVolume.length > 0) {
-    const categories = ['applications_received', 'permitted_applications', 'monitoring_records'];
-    const catColors = { applications_received: '#ce9178', permitted_applications: '#4ec9b0', monitoring_records: '#569cd6' };
-    const allLabels = [...new Set(data.quarterlyVolume.map(q => `${q.year} Q${q.quarter}`))].sort();
-    const datasets = categories.map(cat => {
-      const catData = data.quarterlyVolume.filter(q => q.category === cat);
+    const categories = [
+      "applications_received",
+      "permitted_applications",
+      "monitoring_records",
+    ];
+    const catColors = {
+      applications_received: "#f97316",
+      permitted_applications: "#10b981",
+      monitoring_records: "#3b82f6",
+    };
+    const allLabels = [
+      ...new Set(data.quarterlyVolume.map((q) => `${q.year} Q${q.quarter}`)),
+    ].sort();
+    const datasets = categories.map((cat) => {
+      const catData = data.quarterlyVolume.filter((q) => q.category === cat);
       const dataMap = {};
-      catData.forEach(q => { dataMap[`${q.year} Q${q.quarter}`] = q.cnt; });
+      catData.forEach((q) => {
+        dataMap[`${q.year} Q${q.quarter}`] = q.cnt;
+      });
       return {
         label: REC_CATEGORY_LABELS[cat],
-        data: allLabels.map(l => dataMap[l] || 0),
+        data: allLabels.map((l) => dataMap[l] || 0),
         borderColor: catColors[cat],
-        backgroundColor: catColors[cat] + '33',
+        backgroundColor: catColors[cat] + "22",
         fill: true,
         tension: 0.3,
+        pointRadius: 4,
+        pointHoverRadius: 6,
       };
     });
     new Chart(qCtx, {
-      type: 'line',
+      type: "line",
       data: { labels: allLabels, datasets },
       options: {
-        responsive: true,
-        scales: { x: { ticks: { color: '#999' }, grid: { color: '#333' } }, y: { ticks: { color: '#999' }, grid: { color: '#333' }, beginAtZero: true } },
-        plugins: { legend: { labels: { color: '#ccc' } } }
-      }
+        ...chartOpts,
+        scales: {
+          x: {
+            ticks: { color: "#999" },
+            grid: { color: "rgba(255,255,255,0.06)" },
+          },
+          y: {
+            ticks: { color: "#999" },
+            grid: { color: "rgba(255,255,255,0.06)" },
+            beginAtZero: true,
+          },
+        },
+        plugins: { legend: { labels: { color: "#ccc" } } },
+      },
     });
   }
 }

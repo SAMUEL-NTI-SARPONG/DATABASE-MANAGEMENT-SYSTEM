@@ -382,6 +382,11 @@ async function initDatabase() {
   } catch (e) {
     /* already exists */
   }
+  try {
+    db._db.run(`ALTER TABLE PERMIT ADD COLUMN PenaltyFee REAL DEFAULT 0`);
+  } catch (e) {
+    /* already exists */
+  }
 
   // Field renames — tracks display label overrides for existing columns
   db.exec(`CREATE TABLE IF NOT EXISTS field_renames (
@@ -466,12 +471,45 @@ async function initDatabase() {
     status TEXT DEFAULT 'Pending',
     remarks TEXT,
     is_forward_filled TEXT DEFAULT '',
+    processing_period TEXT,
+    effective_date TEXT,
+    invoice_number_processing TEXT,
+    invoice_number_permit TEXT,
+    processing_paid REAL,
+    permit_paid REAL,
+    nsps TEXT,
+    additional_officers TEXT,
+    administrative_penalty REAL,
     created_by TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime')),
     updated_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_records_entries_cat ON records_entries(category, year, quarter)`);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_records_entries_company ON records_entries(company_name)`);
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_records_entries_cat ON records_entries(category, year, quarter)`,
+  );
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_records_entries_company ON records_entries(company_name)`,
+  );
+
+  // Migration: add new columns for Excel import support
+  const recMigrationCols = [
+    ["processing_period", "TEXT"],
+    ["effective_date", "TEXT"],
+    ["invoice_number_processing", "TEXT"],
+    ["invoice_number_permit", "TEXT"],
+    ["processing_paid", "REAL"],
+    ["permit_paid", "REAL"],
+    ["nsps", "TEXT"],
+    ["additional_officers", "TEXT"],
+    ["administrative_penalty", "REAL"],
+  ];
+  for (const [col, type] of recMigrationCols) {
+    try {
+      db._db.run(`ALTER TABLE records_entries ADD COLUMN ${col} ${type}`);
+    } catch (e) {
+      /* already exists */
+    }
+  }
 
   saveToDisk();
   return db;
