@@ -539,22 +539,34 @@ function showApp() {
   document.getElementById("status-user").textContent =
     state.user.fullName || state.user.username;
   document.getElementById("status-role").textContent = state.user.role;
-  // Reset ALL activity button visibility (undo any hiding from prior session)
+  // Hide ALL activity buttons until permissions are loaded (prevent flash)
   document.querySelectorAll(".activity-btn[data-view]").forEach((btn) => {
-    btn.style.display = "";
+    const view = btn.dataset.view;
+    // Always show settings and dashboard
+    if (view === "settings" || view === "dashboard") {
+      btn.style.display = "";
+    } else {
+      btn.style.display = "none";
+    }
   });
-  // Then hide admin-only buttons for non-admin
-  const actBtn = document.getElementById("activity-nav-btn");
-  const usrBtn = document.getElementById("users-nav-btn");
-  if (state.user.role !== "admin") {
-    if (actBtn) actBtn.style.display = "none";
-    if (usrBtn) usrBtn.style.display = "none";
-  }
   // Load user permissions then apply page visibility, then render dashboard
   Promise.all([loadUserPermissions(), loadFeaturePermissions()]).then(() => {
-    applyPageVisibility();
+    // Now show permitted buttons
+    document.querySelectorAll(".activity-btn[data-view]").forEach((btn) => {
+      const view = btn.dataset.view;
+      if (view === "settings" || view === "dashboard") return; // already visible
+      if (state.user.role === "admin") {
+        btn.style.display = "";
+      } else if (view === "activity" || view === "users") {
+        btn.style.display = "none";
+      } else {
+        btn.style.display = featureCan("page", view) ? "" : "none";
+      }
+    });
     switchView("dashboard");
   });
+  // Connect SSE for backup notifications
+  connectSSE();
   // Nav buttons
   document.querySelectorAll(".activity-btn[data-view]").forEach((btn) => {
     btn.onclick = () => {
@@ -807,6 +819,7 @@ function userCan(action, table) {
 }
 
 function logout() {
+  disconnectSSE();
   state.token = null;
   state.user = null;
   localStorage.removeItem("epa_token");
@@ -1128,10 +1141,19 @@ async function renderDashboard() {
     if (featureCan("dashboard_widget", "charts")) {
       dashHtml += `
       <div class="dash-section">
-        <div class="dash-section-hdr"><span class="dash-section-title">Analytics</span></div>
+        <div class="dash-section-hdr">
+          <span class="dash-section-title">Analytics</span>
+          <div id="dash-year-selector" style="display:flex;align-items:center;gap:8px;margin-left:auto">
+            <span style="font-size:11px;color:var(--text-dim)">Year:</span>
+            <button class="btn btn-sm dash-year-btn dash-year-active" data-year="current" onclick="loadDashboardYear('current')" style="font-size:11px;padding:3px 10px">Current</button>
+          </div>
+        </div>
+        <div id="dash-historical-stats" style="display:none;margin-bottom:16px">
+          <div style="display:flex;gap:12px;flex-wrap:wrap" id="dash-hist-metrics"></div>
+        </div>
         <div class="dash-charts-grid">
           <div class="dash-chart-card dash-chart-card--wide">
-            <div class="dash-chart-hdr"><span>Monthly Permit Issuance</span></div>
+            <div class="dash-chart-hdr"><span id="dash-trend-title">Monthly Permit Issuance</span></div>
             <canvas id="dash-trend-chart" height="200"></canvas>
           </div>
           <div class="dash-chart-card">
@@ -1140,11 +1162,11 @@ async function renderDashboard() {
             <div id="dash-donut-legend" class="dash-donut-legend"></div>
           </div>
           <div class="dash-chart-card">
-            <div class="dash-chart-hdr"><span>Sectors / Classification</span></div>
+            <div class="dash-chart-hdr"><span id="dash-class-title">Sectors / Classification</span></div>
             <div class="dash-hbar-list" id="dash-class-bars"></div>
           </div>
           <div class="dash-chart-card">
-            <div class="dash-chart-hdr"><span>Top Districts</span></div>
+            <div class="dash-chart-hdr"><span id="dash-district-title">Top Districts</span></div>
             <div class="dash-hbar-list" id="dash-district-bars"></div>
           </div>
         </div>
@@ -1218,6 +1240,8 @@ async function renderDashboard() {
         (c) => c.name,
         (c) => c.count,
       );
+      // Populate year selector buttons
+      populateDashYearSelector();
     }
 
     // ── Populate Activity ────────────────────────────────────
@@ -1291,6 +1315,75 @@ async function renderDashboard() {
     }, 60000);
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><div class="empty-title">Error loading dashboard</div><div class="empty-desc">${err.message}</div></div>`;
+  }
+}
+
+// ── Dashboard Year Selector ──────────────────────────────────
+
+async function populateDashYearSelector() {
+  try {
+    const d = await api('/api/dashboard/historical?year=' + new Date().getFullYear());
+    const sel = document.getElementById('dash-year-selector');
+    if (!sel || !d.availableYears || !d.availableYears.length) return;
+    let btns = `<span style="font-size:11px;color:var(--text-dim)">Year:</span>`;
+    btns += `<button class="btn btn-sm dash-year-btn dash-year-active" data-year="current" onclick="loadDashboardYear('current')" style="font-size:11px;padding:3px 10px">Current</button>`;
+    d.availableYears.slice(0, 8).forEach(y => {
+      btns += `<button class="btn btn-sm dash-year-btn" data-year="${y}" onclick="loadDashboardYear('${y}')" style="font-size:11px;padding:3px 10px">${y}</button>`;
+    });
+    sel.innerHTML = btns;
+  } catch(e) { /* ignore */ }
+}
+
+async function loadDashboardYear(year) {
+  // Update active button state
+  document.querySelectorAll('.dash-year-btn').forEach(b => b.classList.remove('dash-year-active'));
+  const activeBtn = document.querySelector(`.dash-year-btn[data-year="${year}"]`);
+  if (activeBtn) activeBtn.classList.add('dash-year-active');
+
+  const histEl = document.getElementById('dash-historical-stats');
+  const trendTitle = document.getElementById('dash-trend-title');
+  const classTitle = document.getElementById('dash-class-title');
+  const distTitle = document.getElementById('dash-district-title');
+
+  if (year === 'current') {
+    // Revert to live data
+    if (histEl) histEl.style.display = 'none';
+    if (trendTitle) trendTitle.textContent = 'Monthly Permit Issuance';
+    if (classTitle) classTitle.textContent = 'Sectors / Classification';
+    if (distTitle) distTitle.textContent = 'Top Districts';
+    refreshDashboardData();
+    return;
+  }
+
+  try {
+    const d = await api(`/api/dashboard/historical?year=${encodeURIComponent(year)}`);
+    if (trendTitle) trendTitle.textContent = `Monthly Permit Issuance — ${year}`;
+    if (classTitle) classTitle.textContent = `Sectors / Classification — ${year}`;
+    if (distTitle) distTitle.textContent = `Top Districts — ${year}`;
+
+    // Show historical metrics
+    if (histEl) {
+      const metricsEl = document.getElementById('dash-hist-metrics');
+      if (metricsEl) {
+        metricsEl.innerHTML = [
+          { icon: '📝', label: 'Permits Issued', value: d.permitsIssued || 0, color: '#3b82f6' },
+          { icon: '🆕', label: 'New Applications', value: d.newApplications || 0, color: '#a855f7' },
+          { icon: '🔄', label: 'Renewals', value: d.renewals || 0, color: '#14b8a6' },
+          { icon: '⚠️', label: 'Expired in Year', value: d.expiredInYear || 0, color: '#f87171' },
+        ].map(m => `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px 16px;display:flex;align-items:center;gap:10px;min-width:160px">
+          <span style="font-size:18px">${m.icon}</span>
+          <div><div style="font-size:18px;font-weight:700;color:${m.color}">${m.value.toLocaleString()}</div><div style="font-size:11px;color:var(--text-dim)">${m.label}</div></div>
+        </div>`).join('');
+      }
+      histEl.style.display = 'block';
+    }
+
+    // Redraw charts with historical data
+    drawTrendChart('dash-trend-chart', d.monthlyTrend || []);
+    renderHBars('dash-class-bars', d.classificationBreakdown || [], c => c.classification, c => c.count);
+    renderHBars('dash-district-bars', d.districtBreakdown || [], c => c.name, c => c.count);
+  } catch(e) {
+    showToast('Failed to load historical data: ' + e.message, 'error');
   }
 }
 
@@ -1864,6 +1957,7 @@ const PERMIT_FIELD_LABELS = {
   ContactPerson: "Contact Person",
   TelephoneNumber: "Telephone Number",
   Email: "Email",
+  Address: "Address",
   DateOfReceiptOfApplication: "Date of Receipt of Application",
   Screening: "Screening",
   Screening_Date: "Date of Screening",
@@ -2140,7 +2234,7 @@ function showPermitRecordModal(row, id) {
       </div>
 
       <!-- Contact Information -->
-      <div class="pm-card" data-pm-section="contact" data-pm-fields="PermitHolder,ContactPerson,TelephoneNumber,Email" oncontextmenu="showPmSectionMenu(event,this)">
+      <div class="pm-card" data-pm-section="contact" data-pm-fields="PermitHolder,ContactPerson,TelephoneNumber,Email,Address" oncontextmenu="showPmSectionMenu(event,this)">
         <div class="pm-card-title">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           Contact Information
@@ -2153,6 +2247,7 @@ function showPermitRecordModal(row, id) {
               <div class="pm-field pm-field-half"><span class="pm-label">Telephone</span><span class="pm-value">${v("TelephoneNumber")}</span></div>
               <div class="pm-field pm-field-half"><span class="pm-label">Email</span><span class="pm-value">${v("Email")}</span></div>
             </div>
+            <div class="pm-field"><span class="pm-label">Address</span><span class="pm-value">${v("Address")}</span></div>
           </div>
         </div>
       </div>
@@ -3406,7 +3501,7 @@ async function showNewRecordModal(table) {
             <div class="pm-edit-fields">${rf("RegisteredNameOfUndertaking")}${rf("ClassificationOfUndertaking")}${rf("FacilityLocation")}${rf("District")}${rf("Jurisdiction")}${rf("Latitude")}${rf("Longitude")}</div>
           </div>
           <div class="pm-card"><div class="pm-card-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Contact Information</div>
-            <div class="pm-edit-fields">${rf("PermitHolder")}${rf("ContactPerson")}${rf("TelephoneNumber")}${rf("Email")}</div>
+            <div class="pm-edit-fields">${rf("PermitHolder")}${rf("ContactPerson")}${rf("TelephoneNumber")}${rf("Email")}${rf("Address")}</div>
           </div>
         </div>
         <div class="pm-col pm-col-right">
@@ -3433,6 +3528,17 @@ async function showNewRecordModal(table) {
       </div>`;
       modal.innerHTML = html;
       document.body.appendChild(modal);
+      // Auto-fill PermitHolder from establishment name in new record
+      const nameInput = modal.querySelector('[data-col="RegisteredNameOfUndertaking"]');
+      const holderInput = modal.querySelector('[data-col="PermitHolder"]');
+      if (nameInput && holderInput) {
+        nameInput.addEventListener('input', () => {
+          if (!holderInput.value || holderInput.value === holderInput.dataset.autoFilled) {
+            holderInput.value = nameInput.value;
+            holderInput.dataset.autoFilled = nameInput.value;
+          }
+        });
+      }
       return;
     }
 
@@ -3516,7 +3622,7 @@ async function showEditRecordModal(table, id) {
             <div class="pm-edit-fields">${rf("RegisteredNameOfUndertaking")}${rf("ClassificationOfUndertaking")}${rf("FacilityLocation")}${rf("District")}${rf("Jurisdiction")}${rf("Latitude")}${rf("Longitude")}</div>
           </div>
           <div class="pm-card"><div class="pm-card-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Contact Information</div>
-            <div class="pm-edit-fields">${rf("PermitHolder")}${rf("ContactPerson")}${rf("TelephoneNumber")}${rf("Email")}</div>
+            <div class="pm-edit-fields">${rf("PermitHolder")}${rf("ContactPerson")}${rf("TelephoneNumber")}${rf("Email")}${rf("Address")}</div>
           </div>
         </div>
         <div class="pm-col pm-col-right">
@@ -3540,11 +3646,10 @@ async function showEditRecordModal(table, id) {
             <div class="pm-edit-fields">${rf("Compliance")}${rf("ComplianceDate")}</div>
           </div>
         </div>
-      </div>
-      </div>
-      <div class="pm-edit-documents">
-        <div class="pm-card" style="margin:0 20px 16px"><div class="pm-card-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.49"/></svg>Documents &amp; Files</div>
-          <div id="edit-documents-container"><div style="padding:12px;color:var(--text-muted)">Loading documents...</div></div>
+        <div class="pm-edit-documents" style="grid-column:1/-1">
+          <div class="pm-card"><div class="pm-card-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.49"/></svg>Documents &amp; Files</div>
+            <div id="edit-documents-container"><div style="padding:12px;color:var(--text-muted)">Loading documents...</div></div>
+          </div>
         </div>
       </div>
       <div class="pm-footer">
@@ -3556,6 +3661,22 @@ async function showEditRecordModal(table, id) {
       modal.innerHTML = html;
       document.body.appendChild(modal);
       loadEditDocuments('PERMIT', id, row);
+      // Auto-fill PermitHolder from establishment name
+      const nameInput = modal.querySelector('[data-col="RegisteredNameOfUndertaking"]');
+      const holderInput = modal.querySelector('[data-col="PermitHolder"]');
+      if (nameInput && holderInput) {
+        nameInput.addEventListener('input', () => {
+          if (!holderInput.value || holderInput.value === holderInput.dataset.autoFilled) {
+            holderInput.value = nameInput.value;
+            holderInput.dataset.autoFilled = nameInput.value;
+          }
+        });
+        // Also set initially if PermitHolder is empty
+        if (!holderInput.value && nameInput.value) {
+          holderInput.value = nameInput.value;
+          holderInput.dataset.autoFilled = nameInput.value;
+        }
+      }
       return;
     }
 
@@ -4137,7 +4258,7 @@ async function executeReport(key, params) {
     let html = `<div class="report-results">`;
 
     // Report header
-    html += `<div class="query-form" style="margin-bottom:16px"><h3>${r?.icon || "📊"} ${data.reportName || r?.name || key}</h3><div class="query-desc">${r?.description || ""} · ${data.total} records generated</div></div>`;
+    html += `<div class="query-form" style="margin-bottom:16px"><h3>${r?.icon || "📊"} ${data.reportName || r?.name || key}</h3><div class="query-desc">${r?.description || ""} · ${data.total} summary rows, ${data.detailTotal || 0} detailed records</div></div>`;
 
     // Report briefing — detailed explanation
     if (r?.briefing) {
@@ -4193,19 +4314,19 @@ async function executeReport(key, params) {
         html += "</div></div>";
       }
     } else {
-      // Large result set — show as data cards
-      html += '<div class="data-cards">';
+      // Large result set — show as summary cards
+      html += '<div class="report-summary-grid">';
       data.rows.forEach((row) => {
-        const title = row[cols[0]] || "Record";
-        html += '<div class="data-card">';
-        html += `<div class="data-card-header"><div class="data-card-title">${escHtml(String(title))}</div></div>`;
-        html += '<div class="data-card-fields">';
-        cols.slice(1).forEach((c) => {
-          if (row[c] !== null && row[c] !== undefined && row[c] !== "") {
-            html += `<div class="data-card-field"><span class="field-label">${humanize(c)}</span><span class="field-value">${formatCellValue(row[c], c)}</span></div>`;
+        html += '<div class="report-summary-card">';
+        cols.forEach((c) => {
+          const val = row[c];
+          if (typeof val === 'number') {
+            html += `<div class="rsv">${val.toLocaleString()}</div><div class="rsl">${humanize(c)}</div>`;
+          } else {
+            html += `<div class="rsl" style="margin-bottom:4px;color:var(--text-bright);font-weight:500">${escHtml(String(val || "N/A"))}</div>`;
           }
         });
-        html += "</div></div>";
+        html += "</div>";
       });
       html += "</div>";
     }
@@ -4221,8 +4342,50 @@ async function executeReport(key, params) {
       html += "</div></div>";
     }
 
+    // Detailed records table
+    if (data.detailRows && data.detailRows.length > 0) {
+      const detailCols = Object.keys(data.detailRows[0]);
+      html += `<div style="margin-top:24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:14px;font-weight:600;color:var(--text-white)">📝 Detailed Records (${data.detailRows.length})</div>
+          <button class="btn btn-sm" id="export-report-btn" style="font-size:11px">📥 Export to Excel</button>
+        </div>
+        <div style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-card);max-height:500px;overflow-y:auto">
+          <table class="data-table" id="report-detail-table" style="width:100%;font-size:12px">
+            <thead style="position:sticky;top:0;z-index:1"><tr>${detailCols.map(c => `<th style="padding:8px 10px;white-space:nowrap;background:var(--bg-tertiary)">${humanize(c)}</th>`).join('')}</tr></thead>
+            <tbody>`;
+      data.detailRows.forEach((row) => {
+        html += '<tr>';
+        detailCols.forEach(c => {
+          let val = row[c] ?? '';
+          let style = 'padding:6px 10px;';
+          const sv = String(val);
+          if (sv.includes('EXPIRED')) style += 'color:var(--red);font-weight:600;';
+          else if (sv.includes('Expiring')) style += 'color:var(--yellow);font-weight:600;';
+          else if (sv === 'Valid') style += 'color:var(--green);';
+          html += `<td style="${style}">${formatCellValue(val, c)}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table></div></div>';
+      window._reportDetailData = data.detailRows;
+    }
+
     html += "</div>";
     target.innerHTML = html;
+    // Bind export button
+    const expBtn = document.getElementById("export-report-btn");
+    if (expBtn) {
+      expBtn.onclick = function() {
+        const rd = window._reportDetailData;
+        if (!rd || !rd.length) { showToast("No data to export", "info"); return; }
+        const ws = XLSX.utils.json_to_sheet(rd);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Report");
+        XLSX.writeFile(wb, `report_${new Date().toISOString().slice(0,10)}.xlsx`);
+        showToast("Report exported", "success");
+      };
+    }
   } catch (err) {
     target.innerHTML = `<div class="empty-state"><div class="empty-title">Report Error</div><div class="empty-desc">${err.message}</div></div>`;
   }
@@ -6948,6 +7111,79 @@ async function createManualBackup() {
   }
 }
 
+// ── SSE connection for backup notifications ──
+let eventSource = null;
+function connectSSE() {
+  if (eventSource) { try { eventSource.close(); } catch {} }
+  if (!state.token) return;
+  eventSource = new EventSource(`/api/events?token=${encodeURIComponent(state.token)}`);
+  eventSource.addEventListener("backup-start", (e) => {
+    const data = JSON.parse(e.data);
+    showBackupModal(data.message || "System backup in progress...");
+  });
+  eventSource.addEventListener("backup-end", (e) => {
+    const data = JSON.parse(e.data);
+    hideBackupModal(data.success, data.message);
+  });
+  eventSource.onerror = () => {
+    // Reconnect after 5 seconds
+    setTimeout(() => { if (state.token) connectSSE(); }, 5000);
+  };
+}
+function disconnectSSE() {
+  if (eventSource) { try { eventSource.close(); } catch {} eventSource = null; }
+}
+
+function showBackupModal(message) {
+  let overlay = document.getElementById("backup-overlay");
+  if (overlay) return; // already showing
+  overlay = document.createElement("div");
+  overlay.id = "backup-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:99999;animation:fadeIn .2s ease";
+  overlay.innerHTML = `
+    <div style="background:var(--bg-card,#1e1e2e);border:1px solid var(--border-subtle,#333);border-radius:16px;padding:40px 48px;max-width:420px;width:90%;text-align:center;box-shadow:0 12px 48px rgba(0,0,0,.5)">
+      <div style="margin-bottom:20px">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#007acc)" stroke-width="1.5" class="backup-spin-icon">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+        </svg>
+      </div>
+      <h3 style="color:var(--text-white,#fff);font-size:18px;margin:0 0 8px;font-weight:600">System Backup</h3>
+      <p id="backup-overlay-msg" style="color:var(--text-muted,#999);font-size:14px;margin:0 0 24px;line-height:1.5">${message}</p>
+      <div style="width:100%;height:6px;border-radius:3px;background:var(--bg-tertiary,#2a2a3a);overflow:hidden">
+        <div id="backup-overlay-bar" style="width:0%;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent,#007acc),#00b4d8);transition:width .3s ease;animation:backupBarPulse 2s ease-in-out infinite"></div>
+      </div>
+      <p style="color:var(--text-muted,#666);font-size:12px;margin-top:12px">Please wait — do not close the application</p>
+    </div>
+  `;
+  // Add animation styles
+  const style = document.createElement("style");
+  style.id = "backup-overlay-style";
+  style.textContent = `
+    @keyframes backupBarPulse { 0%{width:5%} 50%{width:75%} 100%{width:5%} }
+    .backup-spin-icon { animation: backupSpin 1.2s linear infinite; }
+    @keyframes backupSpin { to { transform: rotate(360deg); } }
+  `;
+  document.head.appendChild(style);
+  document.body.appendChild(overlay);
+}
+
+function hideBackupModal(success, message) {
+  const overlay = document.getElementById("backup-overlay");
+  if (!overlay) return;
+  const bar = document.getElementById("backup-overlay-bar");
+  const msg = document.getElementById("backup-overlay-msg");
+  if (bar) { bar.style.animation = "none"; bar.style.width = "100%"; bar.style.background = success ? "var(--green,#4ade80)" : "var(--red,#ef4444)"; }
+  if (msg) msg.textContent = message || (success ? "Backup completed!" : "Backup failed");
+  // Remove icon spin
+  const icon = overlay.querySelector(".backup-spin-icon");
+  if (icon) icon.style.animation = "none";
+  setTimeout(() => {
+    overlay.remove();
+    const style = document.getElementById("backup-overlay-style");
+    if (style) style.remove();
+  }, 2500);
+}
+
 async function loadBackupList() {
   const container = document.getElementById("backup-list");
   if (!container) return;
@@ -8533,47 +8769,51 @@ async function renderScanLogView() {
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-primary btn-sm" onclick="addScanLogEntry()">➕ New Entry</button>
           <button class="btn btn-sm" onclick="exportScanLog()">📥 Export Excel</button>
+          ${state.user?.role === 'admin' ? '<button class="btn btn-sm" onclick="importScanLogExcel()">📤 Import Excel</button>' : ''}
         </div>
       </div>
 
       <!-- Filters -->
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px;margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:end">
-        <div style="flex:1;min-width:150px">
-          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Company</label>
-          <input type="text" id="sl-filter-company" placeholder="Search company..." style="width:100%;font-size:12px" oninput="filterScanLogTable()">
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:16px">
+        <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:10px">🔍 Filter Entries</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+          <div style="flex:1;min-width:150px">
+            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Company Name</label>
+            <input type="text" id="sl-filter-company" placeholder="Type to search..." style="width:100%;font-size:12px" oninput="filterScanLogTable()">
+          </div>
+          <div style="min-width:120px">
+            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">District</label>
+            <select id="sl-filter-district" style="width:100%;font-size:12px" onchange="filterScanLogTable()">
+              <option value="">All Districts</option>
+              ${districts.map((d) => `<option value="${escHtml(d)}">${escHtml(d)}</option>`).join("")}
+            </select>
+          </div>
+          <div style="min-width:100px">
+            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Status</label>
+            <select id="sl-filter-status" style="width:100%;font-size:12px" onchange="filterScanLogTable()">
+              <option value="">All</option><option value="New">New</option><option value="Update">Update</option>
+            </select>
+          </div>
+          <button class="btn btn-sm" onclick="clearScanLogFilters()" style="font-size:11px" title="Clear all filters">✕ Clear</button>
         </div>
-        <div style="min-width:120px">
-          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">District</label>
-          <select id="sl-filter-district" style="width:100%;font-size:12px" onchange="filterScanLogTable()">
-            <option value="">All</option>
-            ${districts.map((d) => `<option value="${escHtml(d)}">${escHtml(d)}</option>`).join("")}
-          </select>
-        </div>
-        <div style="min-width:100px">
-          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Status</label>
-          <select id="sl-filter-status" style="width:100%;font-size:12px" onchange="filterScanLogTable()">
-            <option value="">All</option><option value="New">New</option><option value="Update">Update</option>
-          </select>
-        </div>
-        <button class="btn btn-sm" onclick="clearScanLogFilters()" style="font-size:11px">Clear</button>
       </div>
 
       <!-- Table -->
       <div style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-card)">
-        <table class="data-table" id="scan-log-table" style="width:100%;min-width:1200px">
+        <table class="data-table" id="scan-log-table" style="width:100%;min-width:0">
           <thead><tr>
-            <th style="width:40px">#</th>
-            <th style="width:90px">Date</th>
-            <th style="width:80px">File No.</th>
-            <th>Company Name</th>
-            <th>Sector</th>
-            <th>Location</th>
-            <th>District</th>
-            <th style="width:80px">Status</th>
-            <th style="width:65px">Last Folio</th>
-            <th style="width:65px">Curr Folio</th>
-            <th style="width:60px">Docs</th>
-            <th style="width:80px">Actions</th>
+            <th style="width:32px">#</th>
+            <th style="width:85px">Date</th>
+            <th style="width:75px">File No.</th>
+            <th style="min-width:120px">Company</th>
+            <th style="min-width:80px">Sector</th>
+            <th style="min-width:80px">Location</th>
+            <th style="width:80px">District</th>
+            <th style="width:60px">Status</th>
+            <th style="width:50px">Last</th>
+            <th style="width:50px">Curr</th>
+            <th style="width:45px">Docs</th>
+            <th style="width:70px">Actions</th>
           </tr></thead>
           <tbody id="scan-log-tbody">`;
 
@@ -8583,18 +8823,18 @@ async function renderScanLogView() {
     } else {
       entries.forEach((e, i) => {
         html += `<tr data-company="${escHtml((e.company_name || "").toLowerCase())}" data-district="${escHtml(e.district || "")}" data-status="${escHtml(e.scan_status || "")}">
-          <td style="color:var(--text-muted)">${i + 1}</td>
-          <td style="font-size:12px">${escHtml(e.scan_date || "").slice(0, 10)}</td>
-          <td style="font-size:12px">${escHtml(e.file_number || "")}</td>
-          <td style="font-weight:500;color:var(--text-white)">${escHtml(e.company_name || "—")}</td>
-          <td style="font-size:12px;color:var(--text-dim)">${escHtml(e.sector || e.specific_sector || "—")}</td>
-          <td style="font-size:12px;color:var(--text-dim)">${escHtml(e.location || "—")}</td>
-          <td style="font-size:12px">${escHtml(e.district || "—")}</td>
+          <td style="color:var(--text-muted);font-size:11px">${i + 1}</td>
+          <td style="font-size:11px;white-space:nowrap">${escHtml(e.scan_date || "").slice(0, 10)}</td>
+          <td style="font-size:11px">${escHtml(e.file_number || "")}</td>
+          <td style="font-weight:500;color:var(--text-white);font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.company_name || '')}">${escHtml(e.company_name || "\u2014")}</td>
+          <td style="font-size:11px;color:var(--text-dim);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.sector || '')}">${escHtml(e.sector || e.specific_sector || "\u2014")}</td>
+          <td style="font-size:11px;color:var(--text-dim);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.location || '')}">${escHtml(e.location || "\u2014")}</td>
+          <td style="font-size:11px">${escHtml(e.district || "\u2014")}</td>
           <td><span class="tag ${e.scan_status === "New" ? "tag-green" : "tag-blue"}" style="font-size:10px">${escHtml(e.scan_status || "")}</span></td>
-          <td style="text-align:center">${e.last_folio || 0}</td>
-          <td style="text-align:center">${e.current_folio || 0}</td>
-          <td style="text-align:center;font-weight:600;color:var(--accent)">${e.documents_scanned || 0}</td>
-          <td>
+          <td style="text-align:center;font-size:12px">${e.last_folio || 0}</td>
+          <td style="text-align:center;font-size:12px">${e.current_folio || 0}</td>
+          <td style="text-align:center;font-weight:600;color:var(--accent);font-size:12px">${e.documents_scanned || 0}</td>
+          <td style="white-space:nowrap">
             <button class="btn btn-sm" onclick="editScanLogEntry(${e.id})" title="Edit" style="padding:3px 6px">✏️</button>
             <button class="btn btn-sm" onclick="deleteScanLogEntry(${e.id},${escAttr(e.company_name || "")})" title="Delete" style="padding:3px 6px;color:var(--red)">🗑️</button>
           </td>
@@ -8667,6 +8907,7 @@ async function addScanLogEntry() {
   const result = await showScanLogFormModal({
     title: "New Scan Log Entry",
     icon: "📋",
+    showCopyFromPrevious: true,
     fields: [
       {
         key: "scan_date",
@@ -8894,6 +9135,7 @@ function showScanLogFormModal({
   fields = [],
   confirmText = "Save",
   cancelText = "Cancel",
+  showCopyFromPrevious = false,
 } = {}) {
   return new Promise((resolve) => {
     const existing = document.querySelector(".scanlog-modal-overlay");
@@ -8970,10 +9212,11 @@ function showScanLogFormModal({
       <div class="sl-modal-container">
         <div class="sl-modal-header">
           <div class="sl-modal-header-icon">${icon}</div>
-          <div>
+          <div style="flex:1">
             <h3 class="sl-modal-title">${title}</h3>
             <p class="sl-modal-subtitle">Fill in the scan log entry details below</p>
           </div>
+          ${showCopyFromPrevious ? '<button class="btn btn-sm sl-copy-prev-btn" style="font-size:12px;white-space:nowrap;margin-left:auto">📋 Copy from Previous</button>' : ''}
         </div>
         <div class="sl-modal-body">${groupsHtml}</div>
         <div class="sl-modal-footer">
@@ -9011,6 +9254,79 @@ function showScanLogFormModal({
       close(result);
     };
     overlay.querySelector(".sl-modal-cancel").onclick = () => close(null);
+    // Copy from Previous handler
+    const copyBtn = overlay.querySelector(".sl-copy-prev-btn");
+    if (copyBtn) {
+      copyBtn.onclick = async () => {
+        try {
+          const entries = await api("/api/scan-log");
+          if (!entries || entries.length === 0) { toast("No previous entries to copy from", "info"); return; }
+          // Show a selection list
+          const listOverlay = document.createElement("div");
+          listOverlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:10001;animation:fadeIn .1s ease";
+          let listHtml = `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;max-width:560px;width:90%;max-height:75vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.4)">
+            <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+              <span style="font-size:18px">📋</span>
+              <div style="flex:1"><h3 style="margin:0;font-size:15px;color:var(--text-white)">Select Entry to Copy</h3>
+              <input type="text" id="sl-copy-search" placeholder="Search by company..." style="width:100%;margin-top:8px;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-white);font-size:13px"></div>
+              <button onclick="this.closest('div[style]').parentElement.remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px">✕</button>
+            </div>
+            <div id="sl-copy-list" style="overflow-y:auto;flex:1;padding:8px">`;
+          entries.slice(0, 100).forEach(e => {
+            listHtml += `<div class="sl-copy-item" data-id="${e.id}" style="padding:10px 14px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:10px;border:1px solid transparent;margin-bottom:4px;transition:background .15s"
+              onmouseover="this.style.background='var(--bg-tertiary)'" onmouseout="this.style.background=''"
+              data-search="${escHtml((e.company_name||'').toLowerCase())}">
+              <div style="flex:1">
+                <div style="font-weight:500;color:var(--text-white);font-size:13px">${escHtml(e.company_name || '—')}</div>
+                <div style="font-size:11px;color:var(--text-muted)">${escHtml(e.file_number||'')} · ${escHtml(e.district||'')} · ${escHtml(e.sector||'')} · Folio: ${e.last_folio||0}→${e.current_folio||0}</div>
+              </div>
+              <div style="font-size:11px;color:var(--text-dim)">${escHtml((e.scan_date||'').slice(0,10))}</div>
+            </div>`;
+          });
+          listHtml += '</div></div>';
+          listOverlay.innerHTML = listHtml;
+          listOverlay.addEventListener("click", ev => { if (ev.target === listOverlay) listOverlay.remove(); });
+          document.body.appendChild(listOverlay);
+          // Search filter
+          const searchInput = listOverlay.querySelector('#sl-copy-search');
+          if (searchInput) {
+            searchInput.focus();
+            searchInput.oninput = () => {
+              const q = searchInput.value.toLowerCase();
+              listOverlay.querySelectorAll('.sl-copy-item').forEach(item => {
+                item.style.display = item.dataset.search.includes(q) ? '' : 'none';
+              });
+            };
+          }
+          // Click an item to copy
+          listOverlay.querySelectorAll('.sl-copy-item').forEach(item => {
+            item.onclick = () => {
+              const eid = parseInt(item.dataset.id);
+              const entry = entries.find(x => x.id === eid);
+              if (!entry) return;
+              // Fill fields (except date and scan_status)
+              const copyFields = ['file_number','company_name','sector','location','district','jurisdiction','notes'];
+              copyFields.forEach(k => {
+                const el = overlay.querySelector(`[data-field="${k}"]`);
+                if (el && entry[k]) el.value = entry[k];
+              });
+              // Set last_folio = previous current_folio, clear current_folio
+              const lastFolioEl = overlay.querySelector('[data-field="last_folio"]');
+              const currFolioEl = overlay.querySelector('[data-field="current_folio"]');
+              if (lastFolioEl) lastFolioEl.value = entry.current_folio || 0;
+              if (currFolioEl) currFolioEl.value = '';
+              // Set status to Update since it's a continuation
+              const statusEl = overlay.querySelector('[data-field="scan_status"]');
+              if (statusEl) statusEl.value = 'Update';
+              listOverlay.remove();
+              toast("Entry copied — update the date and current folio", "success");
+            };
+          });
+        } catch (err) {
+          toast("Failed to load entries: " + err.message, "error");
+        }
+      };
+    }
     overlay.addEventListener("click", (e) => {
       if (e.target === overlay) close(null);
     });
@@ -9076,6 +9392,65 @@ async function exportScanLog() {
   } finally {
     removeProgressBar();
   }
+}
+
+async function importScanLogExcel() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".xlsx,.xls,.csv";
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    showProgressBar();
+    try {
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+      if (!rows.length) { toast("No data found in file", "error"); return; }
+      // Map common column names to expected fields
+      const colMap = {
+        'date': 'scan_date', 'scan date': 'scan_date', 'scan_date': 'scan_date',
+        'file number': 'file_number', 'file no': 'file_number', 'file no.': 'file_number', 'file_number': 'file_number', 'fileno': 'file_number',
+        'company': 'company_name', 'company name': 'company_name', 'company_name': 'company_name', 'name': 'company_name',
+        'sector': 'sector', 'classification': 'sector',
+        'location': 'location', 'facility location': 'location',
+        'district': 'district',
+        'jurisdiction': 'jurisdiction',
+        'status': 'scan_status', 'scan status': 'scan_status', 'scan_status': 'scan_status',
+        'last folio': 'last_folio', 'last_folio': 'last_folio', 'previous folio': 'last_folio',
+        'current folio': 'current_folio', 'current_folio': 'current_folio', 'curr folio': 'current_folio',
+        'notes': 'notes', 'remarks': 'notes', 'comment': 'notes', 'comments': 'notes',
+      };
+      const mapped = rows.map(row => {
+        const entry = {};
+        Object.keys(row).forEach(k => {
+          const key = colMap[k.toLowerCase().trim()] || k.toLowerCase().replace(/\s+/g, '_');
+          entry[key] = row[k];
+        });
+        return entry;
+      }).filter(r => r.company_name || r.file_number);
+      if (!mapped.length) { toast("No valid rows found. Ensure columns include Company Name or File Number.", "error"); return; }
+      // Preview
+      const ok = await showConfirmModal(
+        `Found <b>${mapped.length}</b> entries to import. This will add them to the scan log.`,
+        { title: "Import Scan Log", icon: "📤", confirmText: `Import ${mapped.length} Entries`, danger: false }
+      );
+      if (!ok) return;
+      showProgressBar();
+      const result = await api("/api/scan-log/bulk-import", {
+        method: "POST",
+        body: JSON.stringify({ entries: mapped }),
+      });
+      toast(`Imported ${result.imported} entries`, "success");
+      renderScanLogView();
+    } catch (err) {
+      toast("Import failed: " + err.message, "error");
+    } finally {
+      removeProgressBar();
+    }
+  };
+  input.click();
 }
 
 // ══════════════════════════════════════════════════════════════

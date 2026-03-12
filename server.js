@@ -88,6 +88,15 @@ if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
 let sharedDocsPath = "";
 let cronJob = null; // for scheduled backups
 
+// ── SSE clients for backup notifications ──
+const sseClients = new Set();
+function broadcastSSE(event, data) {
+  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of sseClients) {
+    try { res.write(msg); } catch { sseClients.delete(res); }
+  }
+}
+
 // ══════════════════════════════════════════════════════════════
 //  Saved Queries — translated from Access
 // ══════════════════════════════════════════════════════════════
@@ -946,6 +955,7 @@ const REPORT_DEFINITIONS = {
       "This report provides a comprehensive breakdown of all environmental permits in the system, grouped by their current application status (e.g., Permit Issued, Processing Fee Invoice Issued, Paid Permit Fee, etc.) and cross-referenced with the classification of each undertaking. It helps management understand how many permits are at each stage of the approval pipeline, identify bottlenecks in processing, and track the overall workload distribution across different industry sectors. Use this report to monitor permit processing efficiency and ensure no applications are stalled.",
     icon: "📊",
     sql: `SELECT ApplicationStatus, COUNT(*) AS Total, ClassificationOfUndertaking FROM PERMIT WHERE ApplicationStatus IS NOT NULL GROUP BY ApplicationStatus, ClassificationOfUndertaking ORDER BY Total DESC`,
+    detailSql: `SELECT FileNumber, RegisteredNameOfUndertaking AS Company, ClassificationOfUndertaking AS Sector, ApplicationStatus AS Status, District, PermitHolder, DateOfReceiptOfApplication AS Received, DateOfIssueOfPermit AS Issued, PermitExpirationDate AS Expires FROM PERMIT WHERE ApplicationStatus IS NOT NULL ORDER BY ApplicationStatus, RegisteredNameOfUndertaking`,
   },
   QUARTERLY: {
     name: "Quarterly Permits Report",
@@ -970,6 +980,7 @@ const REPORT_DEFINITIONS = {
       "This report identifies all permits currently flagged for compliance enforcement action. It groups these permits by their application status to show how many enforcement cases exist at each processing stage. This is critical for the EPA's regulatory function — it helps compliance officers prioritize enforcement actions, track the status of ongoing enforcement cases, and report to management on the agency's regulatory activity. A high count indicates areas needing increased monitoring or follow-up.",
     icon: "⚖️",
     sql: `SELECT Compliance, ApplicationStatus, COUNT(*) AS Total FROM PERMIT WHERE Compliance = 'Compliance Enforcement' GROUP BY ApplicationStatus ORDER BY Total DESC`,
+    detailSql: `SELECT FileNumber, RegisteredNameOfUndertaking AS Company, ApplicationStatus AS Status, Compliance, ComplianceDate, District, PermitHolder, DateOfIssueOfPermit AS Issued, PermitExpirationDate AS Expires FROM PERMIT WHERE Compliance = 'Compliance Enforcement' ORDER BY ComplianceDate DESC`,
   },
   FINANCIAL: {
     name: "Financial Summary",
@@ -978,6 +989,7 @@ const REPORT_DEFINITIONS = {
       "This report provides a complete financial overview of the EPA's permit fee collection. It shows the total number of permits, cumulative processing fees collected, total permit fees collected, and the grand total revenue. It also tracks how many applicants have paid their processing fees, how many have paid their permit fees, and how many permits have actually been issued. This report is essential for financial reporting, budget planning, revenue tracking, and identifying outstanding payments that need follow-up.",
     icon: "💰",
     sql: `SELECT COUNT(*) AS TotalPermits, SUM(CASE WHEN ProcessingFee > 0 THEN ProcessingFee ELSE 0 END) AS TotalProcessingFees, SUM(CASE WHEN PermitFee > 0 THEN PermitFee ELSE 0 END) AS TotalPermitFees, SUM(CASE WHEN TotalAmount > 0 THEN TotalAmount ELSE 0 END) AS GrandTotal, SUM(CASE WHEN DateOfPaymentOfProcessingFee IS NOT NULL THEN 1 ELSE 0 END) AS PaidProcessingFee, SUM(CASE WHEN DateOfPaymentOfPermitFee IS NOT NULL THEN 1 ELSE 0 END) AS PaidPermitFee, SUM(CASE WHEN DateOfIssueOfPermit IS NOT NULL THEN 1 ELSE 0 END) AS PermitsIssued FROM PERMIT`,
+    detailSql: `SELECT FileNumber, RegisteredNameOfUndertaking AS Company, ProcessingFee, DateOfPaymentOfProcessingFee AS ProcessingFeePaid, PermitFee, DateOfPaymentOfPermitFee AS PermitFeePaid, PenaltyFee, TotalAmount, ApplicationStatus AS Status FROM PERMIT WHERE ProcessingFee > 0 OR PermitFee > 0 OR TotalAmount > 0 ORDER BY TotalAmount DESC`,
   },
   EXPIRATION: {
     name: "Expiration Report",
@@ -986,6 +998,7 @@ const REPORT_DEFINITIONS = {
       "This report provides a critical snapshot of permit validity across the entire database. It categorizes all permits into four groups: Expired (past their expiration date), Expiring Soon (within the next 90 days), Valid (more than 90 days until expiry), and No Date (permits without an expiration date on file). This is one of the most important operational reports — it alerts staff to permits needing immediate renewal attention, helps prevent lapses in environmental compliance, and identifies data quality issues where expiration dates are missing.",
     icon: "⏰",
     sql: `SELECT SUM(CASE WHEN PermitExpirationDate IS NOT NULL AND PermitExpirationDate < date('now') THEN 1 ELSE 0 END) AS Expired, SUM(CASE WHEN PermitExpirationDate IS NOT NULL AND PermitExpirationDate >= date('now') AND PermitExpirationDate <= date('now','+90 days') THEN 1 ELSE 0 END) AS ExpiringSoon, SUM(CASE WHEN PermitExpirationDate IS NOT NULL AND PermitExpirationDate > date('now','+90 days') THEN 1 ELSE 0 END) AS Valid, SUM(CASE WHEN PermitExpirationDate IS NULL OR PermitExpirationDate = '' THEN 1 ELSE 0 END) AS NoDate FROM PERMIT`,
+    detailSql: `SELECT FileNumber, RegisteredNameOfUndertaking AS Company, PermitNumber, DateOfIssueOfPermit AS Issued, PermitExpirationDate AS Expires, District, ApplicationStatus AS Status, CASE WHEN PermitExpirationDate IS NULL OR PermitExpirationDate = '' THEN 'No Date' WHEN PermitExpirationDate < date('now') THEN 'EXPIRED' WHEN PermitExpirationDate <= date('now','+90 days') THEN 'Expiring Soon' ELSE 'Valid' END AS ExpiryStatus FROM PERMIT ORDER BY PermitExpirationDate ASC`,
   },
   FLEET: {
     name: "Fleet Status Report",
@@ -1002,6 +1015,7 @@ const REPORT_DEFINITIONS = {
       "This report shows the geographic distribution of environmental permits across all districts in the EPA's jurisdiction. Each district is listed with its total number of permits, sorted from highest to lowest. This helps regional planners understand where the highest concentration of regulated facilities exists, allocate inspection resources proportionally, and identify underserved districts that may need outreach. It is particularly useful for annual planning, resource allocation meetings, and regional performance comparisons.",
     icon: "🗺️",
     sql: `SELECT District, COUNT(*) AS Total FROM PERMIT WHERE District IS NOT NULL AND District != '' GROUP BY District ORDER BY Total DESC`,
+    detailSql: `SELECT FileNumber, RegisteredNameOfUndertaking AS Company, District, ClassificationOfUndertaking AS Sector, ApplicationStatus AS Status, PermitHolder, DateOfIssueOfPermit AS Issued FROM PERMIT WHERE District IS NOT NULL AND District != '' ORDER BY District, RegisteredNameOfUndertaking`,
   },
   CLASSIFICATION: {
     name: "Permits by Classification",
@@ -1010,6 +1024,7 @@ const REPORT_DEFINITIONS = {
       "This report breaks down all environmental permits by the industry classification or sector of each undertaking (e.g., Mining, Manufacturing, Hospitality, Health, Services, etc.). It shows how many permits exist in each sector, sorted from the most to the least common. This is essential for understanding the EPA's regulatory landscape — which industries dominate the permit portfolio, where environmental risks may be concentrated, and which sectors are growing or declining in permit applications over time.",
     icon: "📂",
     sql: `SELECT ClassificationOfUndertaking AS Classification, COUNT(*) AS Total FROM PERMIT WHERE ClassificationOfUndertaking IS NOT NULL AND ClassificationOfUndertaking != '' GROUP BY ClassificationOfUndertaking ORDER BY Total DESC`,
+    detailSql: `SELECT FileNumber, RegisteredNameOfUndertaking AS Company, ClassificationOfUndertaking AS Sector, District, ApplicationStatus AS Status, PermitHolder, DateOfIssueOfPermit AS Issued, PermitExpirationDate AS Expires FROM PERMIT WHERE ClassificationOfUndertaking IS NOT NULL AND ClassificationOfUndertaking != '' ORDER BY ClassificationOfUndertaking, RegisteredNameOfUndertaking`,
   },
 };
 
@@ -1868,6 +1883,42 @@ app.delete("/api/scan-log/:id", auth, (req, res) => {
   }
 });
 
+// Bulk import scan log entries
+app.post("/api/scan-log/bulk-import", auth, adminOnly, (req, res) => {
+  const db = getDb();
+  try {
+    const { entries } = req.body;
+    if (!Array.isArray(entries) || !entries.length) return res.status(400).json({ error: "No entries provided" });
+    const validCols = ['scan_date','file_number','company_name','undertaking','specific_sector','sector','location','district','jurisdiction','scan_status','last_folio','current_folio','scanned_by','notes'];
+    let imported = 0;
+    for (const entry of entries) {
+      const cols = [];
+      const vals = [];
+      validCols.forEach(c => {
+        if (entry[c] !== undefined && entry[c] !== '') {
+          cols.push(c);
+          vals.push(String(entry[c]));
+        }
+      });
+      if (!cols.length) continue;
+      // Calculate documents_scanned
+      const lastF = parseInt(entry.last_folio) || 0;
+      const currF = parseInt(entry.current_folio) || 0;
+      cols.push('documents_scanned');
+      vals.push(String(Math.max(0, currF - lastF)));
+      cols.push('scanned_by');
+      vals.push(entry.scanned_by || req.user.fullName || req.user.username);
+      db.run(`INSERT INTO scan_log (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, vals);
+      imported++;
+    }
+    saveToDisk();
+    logActivity(req, "IMPORT", "scan_log", `Bulk imported ${imported} scan log entries`);
+    res.json({ imported });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Export scan log to Excel
 app.get("/api/scan-log-export", auth, (req, res) => {
   const db = getDb();
@@ -2660,6 +2711,82 @@ app.get("/api/dashboard", auth, (req, res) => {
   }
 });
 
+// Historical dashboard data — scoped by year
+app.get("/api/dashboard/historical", auth, (req, res) => {
+  try {
+    const db = getDb();
+    const year = String(parseInt(req.query.year) || new Date().getFullYear());
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    const stats = {};
+    stats.year = parseInt(year);
+
+    // Permits issued in that year
+    stats.permitsIssued = db.get(
+      `SELECT COUNT(*) AS c FROM PERMIT WHERE DateOfIssueOfPermit >= ? AND DateOfIssueOfPermit <= ?`,
+      [startDate, endDate]
+    )?.c || 0;
+
+    // New applications in that year
+    stats.newApplications = db.get(
+      `SELECT COUNT(*) AS c FROM PERMIT WHERE ApplicationStatusII = 'New Application' AND DateOfReceiptOfApplication >= ? AND DateOfReceiptOfApplication <= ?`,
+      [startDate, endDate]
+    )?.c || 0;
+
+    // Renewals in that year
+    stats.renewals = db.get(
+      `SELECT COUNT(*) AS c FROM PERMIT WHERE ApplicationStatusII = 'Renewal of Permit' AND DateOfReceiptOfApplication >= ? AND DateOfReceiptOfApplication <= ?`,
+      [startDate, endDate]
+    )?.c || 0;
+
+    // Permits that expired in that year
+    stats.expiredInYear = db.get(
+      `SELECT COUNT(*) AS c FROM PERMIT WHERE PermitExpirationDate >= ? AND PermitExpirationDate <= ?`,
+      [startDate, endDate]
+    )?.c || 0;
+
+    // Monthly trend for that year
+    stats.monthlyTrend = db.all(
+      `SELECT strftime('%Y-%m', DateOfIssueOfPermit) AS month, COUNT(*) AS count
+       FROM PERMIT
+       WHERE DateOfIssueOfPermit IS NOT NULL AND DateOfIssueOfPermit != ''
+         AND DateOfIssueOfPermit >= ? AND DateOfIssueOfPermit <= ?
+       GROUP BY month ORDER BY month ASC`,
+      [startDate, endDate]
+    );
+
+    // District breakdown for that year
+    stats.districtBreakdown = db.all(
+      `SELECT District AS name, COUNT(*) AS count FROM PERMIT
+       WHERE District IS NOT NULL AND District != ''
+         AND DateOfIssueOfPermit >= ? AND DateOfIssueOfPermit <= ?
+       GROUP BY District ORDER BY count DESC LIMIT 10`,
+      [startDate, endDate]
+    );
+
+    // Classification breakdown for that year
+    stats.classificationBreakdown = db.all(
+      `SELECT ClassificationOfUndertaking AS classification, COUNT(*) AS count FROM PERMIT
+       WHERE ClassificationOfUndertaking IS NOT NULL AND ClassificationOfUndertaking != ''
+         AND DateOfIssueOfPermit >= ? AND DateOfIssueOfPermit <= ?
+       GROUP BY ClassificationOfUndertaking ORDER BY count DESC LIMIT 10`,
+      [startDate, endDate]
+    );
+
+    // Available years for the year selector
+    stats.availableYears = db.all(
+      `SELECT DISTINCT strftime('%Y', DateOfIssueOfPermit) AS yr FROM PERMIT
+       WHERE DateOfIssueOfPermit IS NOT NULL AND DateOfIssueOfPermit != ''
+       ORDER BY yr DESC`
+    ).map(r => parseInt(r.yr)).filter(y => !isNaN(y));
+
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ══════════════════════════════════════════════════════════════
 //  Queries
 // ══════════════════════════════════════════════════════════════
@@ -2760,8 +2887,12 @@ app.post(
     }
     try {
       const rows = db.all(sql, []);
+      let detailRows = [];
+      if (report.detailSql) {
+        try { detailRows = db.all(report.detailSql, []); } catch {}
+      }
       logActivity(req, "RUN_REPORT", "report", report.name);
-      res.json({ rows, total: rows.length, reportName: report.name });
+      res.json({ rows, detailRows, total: rows.length, detailTotal: detailRows.length, reportName: report.name });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -3731,6 +3862,22 @@ app.get("/api/backup/google/callback", async (req, res) => {
   }
 });
 
+// ── SSE endpoint for backup notifications (all authenticated users) ──
+app.get("/api/events", (req, res) => {
+  // Accept token from query string for EventSource compatibility
+  const token = req.query.token;
+  if (!token) return res.status(401).json({ error: "Not authenticated" });
+  try { jwt.verify(token, JWT_SECRET); } catch { return res.status(401).json({ error: "Invalid token" }); }
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.write("event: connected\ndata: {}\n\n");
+  sseClients.add(res);
+  req.on("close", () => sseClients.delete(res));
+});
+
 // Check Google Drive connection status
 app.get("/api/backup/google/status", auth, adminOnly, (req, res) => {
   const db = getDb();
@@ -3757,6 +3904,7 @@ app.post("/api/backup/google/disconnect", auth, adminOnly, (req, res) => {
 // Create backup
 app.post("/api/backup/create", auth, adminOnly, async (req, res) => {
   try {
+    broadcastSSE("backup-start", { message: "System backup in progress..." });
     const db = getDb();
     saveToDisk(); // Ensure latest data is on disk
     const timestamp = new Date()
@@ -3781,6 +3929,28 @@ app.post("/api/backup/create", auth, adminOnly, async (req, res) => {
       if (fs.existsSync(FILES_DIR)) {
         archive.directory(FILES_DIR, "files");
       }
+      // Add PERMIT data as Excel
+      try {
+        const permits = db.all("SELECT * FROM PERMIT ORDER BY id");
+        if (permits.length) {
+          const ws = XLSX.utils.json_to_sheet(permits);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Permits");
+          const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+          archive.append(buf, { name: "permits_data.xlsx" });
+        }
+      } catch {}
+      // Add scan_log data as Excel
+      try {
+        const scanLogs = db.all("SELECT * FROM scan_log ORDER BY id");
+        if (scanLogs.length) {
+          const ws2 = XLSX.utils.json_to_sheet(scanLogs);
+          const wb2 = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb2, ws2, "Scan Log");
+          const buf2 = XLSX.write(wb2, { type: "buffer", bookType: "xlsx" });
+          archive.append(buf2, { name: "scan_log_data.xlsx" });
+        }
+      } catch {}
       archive.finalize();
     });
 
@@ -3858,7 +4028,9 @@ app.post("/api/backup/create", auth, adminOnly, async (req, res) => {
       storage: storageLocation,
       googleFileId,
     });
+    broadcastSSE("backup-end", { success: true, message: "Backup completed successfully" });
   } catch (e) {
+    broadcastSSE("backup-end", { success: false, message: "Backup failed: " + e.message });
     res.status(500).json({ error: e.message });
   }
 });
@@ -4160,6 +4332,7 @@ function setupBackupCron(db) {
 
   cronJob = cron.schedule(cronExpr, async () => {
     console.log("[Backup] Running scheduled backup...");
+    broadcastSSE("backup-start", { message: "Scheduled backup in progress..." });
     try {
       saveToDisk();
       const timestamp = new Date()
@@ -4179,6 +4352,28 @@ function setupBackupCron(db) {
         const dbPath = path.join(APP_ROOT, "data", "epa.db");
         if (fs.existsSync(dbPath)) archive.file(dbPath, { name: "epa.db" });
         if (fs.existsSync(FILES_DIR)) archive.directory(FILES_DIR, "files");
+        // Add PERMIT data as Excel
+        try {
+          const permits = db.all("SELECT * FROM PERMIT ORDER BY id");
+          if (permits.length) {
+            const ws = XLSX.utils.json_to_sheet(permits);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Permits");
+            const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+            archive.append(buf, { name: "permits_data.xlsx" });
+          }
+        } catch {}
+        // Add scan_log data as Excel
+        try {
+          const scanLogs = db.all("SELECT * FROM scan_log ORDER BY id");
+          if (scanLogs.length) {
+            const ws2 = XLSX.utils.json_to_sheet(scanLogs);
+            const wb2 = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb2, ws2, "Scan Log");
+            const buf2 = XLSX.write(wb2, { type: "buffer", bookType: "xlsx" });
+            archive.append(buf2, { name: "scan_log_data.xlsx" });
+          }
+        } catch {}
         archive.finalize();
       });
 
@@ -4234,8 +4429,10 @@ function setupBackupCron(db) {
       console.log(
         `[Backup] Completed: ${backupName}.zip (${(stats.size / 1024 / 1024).toFixed(2)} MB)`,
       );
+      broadcastSSE("backup-end", { success: true, message: "Scheduled backup completed successfully" });
     } catch (e) {
       console.error("[Backup] Failed:", e.message);
+      broadcastSSE("backup-end", { success: false, message: "Scheduled backup failed" });
     }
   });
   console.log(`[Backup] Scheduled: ${schedule} (cron: ${cronExpr})`);

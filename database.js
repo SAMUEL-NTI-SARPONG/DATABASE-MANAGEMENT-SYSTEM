@@ -387,6 +387,11 @@ async function initDatabase() {
   } catch (e) {
     /* already exists */
   }
+  try {
+    db._db.run(`ALTER TABLE PERMIT ADD COLUMN Address TEXT DEFAULT ''`);
+  } catch (e) {
+    /* already exists */
+  }
 
   // Field renames — tracks display label overrides for existing columns
   db.exec(`CREATE TABLE IF NOT EXISTS field_renames (
