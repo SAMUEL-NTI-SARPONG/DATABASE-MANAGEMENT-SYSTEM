@@ -3403,6 +3403,7 @@ function renderFormField(fieldName, value, table, fieldOptions, idPrefix) {
 
   // Autocomplete combo-box for OfficerWorkingOnFile (and similar officer fields)
   const autocompleteFields = [
+    "FileLocation",
     "OfficerWorkingOnFile",
     "ApprovedBy",
     "RequestedBy",
@@ -3800,6 +3801,7 @@ function renderPermitFormField(
 
   // Autocomplete combo-box for OfficerWorkingOnFile
   const autocompleteFields = [
+    "FileLocation",
     "OfficerWorkingOnFile",
     "ApprovedBy",
     "RequestedBy",

@@ -443,6 +443,16 @@ async function initDatabase() {
     );
     db._db.run(
       `DELETE FROM custom_dropdown_options
+       WHERE table_name = 'PERMIT'
+         AND field_name = 'FileLocation'`,
+    );
+    db._db.run(
+      `DELETE FROM hidden_dropdown_options
+       WHERE table_name = 'PERMIT'
+         AND field_name = 'FileLocation'`,
+    );
+    db._db.run(
+      `DELETE FROM custom_dropdown_options
        WHERE option_value IS NULL
           OR trim(option_value) = ''
           OR trim(option_value) GLOB '########*'`,
