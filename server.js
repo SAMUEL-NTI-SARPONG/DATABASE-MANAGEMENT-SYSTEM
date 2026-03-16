@@ -581,7 +581,7 @@ const FIELD_OPTIONS = {
       "Permit Denied",
       "Awaiting Payment of Fees",
     ],
-    ApplicationStatusII: ["New", "Existing"],
+    ApplicationStatusII: ["New Application", "Renewal of Permit"],
     Screening: ["Done", "Not Done"],
     PermittedBy: ["Head Office", "Sekondi Office"],
     FileLocation: [
@@ -709,6 +709,40 @@ const FIELD_OPTIONS = {
   tbl_keyword: {},
 };
 
+function mergeDistinctOptionValues(baseList, extraList) {
+  const out = [...(Array.isArray(baseList) ? baseList : [])];
+  for (const v of extraList || []) {
+    const val = String(v || "").trim();
+    if (!val) continue;
+    if (!out.some((x) => x.toLowerCase() === val.toLowerCase())) out.push(val);
+  }
+  return out;
+}
+
+function enrichPermitDropdownOptionsFromData(db, options) {
+  if (!options) return options;
+  const dynamicFileLocations = db
+    .all(
+      "SELECT DISTINCT TRIM(FileLocation) AS v FROM PERMIT WHERE FileLocation IS NOT NULL AND TRIM(FileLocation) != '' ORDER BY v ASC",
+    )
+    .map((r) => r.v);
+  const dynamicAppInfo = db
+    .all(
+      "SELECT DISTINCT TRIM(ApplicationStatusII) AS v FROM PERMIT WHERE ApplicationStatusII IS NOT NULL AND TRIM(ApplicationStatusII) != '' ORDER BY v ASC",
+    )
+    .map((r) => r.v);
+
+  options.FileLocation = mergeDistinctOptionValues(
+    options.FileLocation,
+    dynamicFileLocations,
+  );
+  options.ApplicationStatusII = mergeDistinctOptionValues(
+    options.ApplicationStatusII,
+    dynamicAppInfo,
+  );
+  return options;
+}
+
 // ══════════════════════════════════════════════════════════════
 //  Form definitions — replicating Access forms
 // ══════════════════════════════════════════════════════════════
@@ -741,7 +775,11 @@ const FORM_DEFINITIONS = {
       },
       {
         title: "Application Details",
-        fields: ["DateOfReceiptOfApplication", "Screening", "Screening_Date"],
+        fields: [
+          "DateOfReceiptOfApplication",
+          "Screening_Date",
+          "DateOfSiteVerification",
+        ],
       },
       {
         title: "Permit Details",
@@ -2322,7 +2360,11 @@ app.get("/api/field-options/:table", auth, (req, res) => {
   try {
     const db = getDb();
     const table = req.params.table;
-    const options = { ...(FIELD_OPTIONS[table] || {}) };
+    let options = { ...(FIELD_OPTIONS[table] || {}) };
+
+    if (table === "PERMIT") {
+      options = enrichPermitDropdownOptionsFromData(db, options);
+    }
 
     // Dynamically inject employee names for OfficerWorkingOnFile
     if (table === "PERMIT") {
@@ -5471,6 +5513,9 @@ app.get("/api/dropdown-options/:table", auth, (req, res) => {
 
     // Start with hardcoded defaults
     const defaults = JSON.parse(JSON.stringify(FIELD_OPTIONS[table] || {}));
+    if (table === "PERMIT") {
+      enrichPermitDropdownOptionsFromData(db, defaults);
+    }
 
     // Overlay custom options
     const customs = db.all(

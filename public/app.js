@@ -1959,8 +1959,9 @@ const PERMIT_FIELD_LABELS = {
   Email: "Email",
   Address: "Address",
   DateOfReceiptOfApplication: "Date of Receipt of Application",
-  Screening: "Screening",
+  Screening: "Application Screening",
   Screening_Date: "Date of Screening",
+  DateOfSiteVerification: "Date of Site Verification",
   DateOfReceiptOfDraft: "Date of Receipt of Draft",
   DateOfReceiptOfRevised: "Date of Receipt of Revised",
   DateReviewCommentWasSentToProponent: "Date Review Comment Sent",
@@ -2028,6 +2029,47 @@ const PERMIT_FIELD_LABELS = {
 
 function getPermitLabel(field) {
   return PERMIT_FIELD_LABELS[field] || humanize(field);
+}
+
+const PERMIT_SECTION_BY_FIELD = {
+  FileNumber: "File Information",
+  FileLocation: "File Information",
+  OfficerWorkingOnFile: "File Information",
+  RegisteredNameOfUndertaking: "Establishment Information",
+  ClassificationOfUndertaking: "Establishment Information",
+  FacilityLocation: "Establishment Information",
+  District: "Establishment Information",
+  Jurisdiction: "Establishment Information",
+  Latitude: "Establishment Information",
+  Longitude: "Establishment Information",
+  PermitHolder: "Contact Information",
+  ContactPerson: "Contact Information",
+  TelephoneNumber: "Contact Information",
+  Email: "Contact Information",
+  Address: "Contact Information",
+  DateOfReceiptOfApplication: "Application Details",
+  Screening_Date: "Application Details",
+  DateOfSiteVerification: "Application Details",
+  PermitNumber: "Permit Details",
+  DateOfIssueOfPermit: "Permit Details",
+  PermitExpirationDate: "Permit Details",
+  PermittedBy: "Permit Details",
+  ApplicationStatusII: "Status",
+  ApplicationStatus: "Status",
+  ProcessingFee: "Fees",
+  DateOfPaymentOfProcessingFee: "Fees",
+  PermitFee: "Fees",
+  DateOfPaymentOfPermitFee: "Fees",
+  PenaltyFee: "Fees",
+  Compliance: "Compliance",
+  ComplianceDate: "Compliance",
+  FileReturned: "Movement",
+  DateReturned: "Movement",
+  DateReceived: "Movement",
+};
+
+function getPermitSectionLabel(field) {
+  return PERMIT_SECTION_BY_FIELD[field] || "Other";
 }
 
 async function showRecordModal(table, id) {
@@ -2152,7 +2194,6 @@ function showPermitRecordModal(row, id) {
     row.RegisteredNameOfUndertaking || "Unnamed Establishment";
   const sector = row.ClassificationOfUndertaking || "";
   const permitNo = row.PermitNumber || "";
-  const screening = row.Screening || (row.Screening_Date ? "Done" : "Not Done");
 
   let modal = document.createElement("div");
   modal.className = "modal-overlay";
@@ -2271,7 +2312,7 @@ function showPermitRecordModal(row, id) {
     <div class="pm-col pm-col-right">
 
       <!-- Application Details -->
-      <div class="pm-card" data-pm-section="application" data-pm-fields="DateOfReceiptOfApplication,Screening,Screening_Date" oncontextmenu="showPmSectionMenu(event,this)">
+      <div class="pm-card" data-pm-section="application" data-pm-fields="DateOfReceiptOfApplication,Screening_Date,DateOfSiteVerification" oncontextmenu="showPmSectionMenu(event,this)">
         <div class="pm-card-title">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           Application Details
@@ -2279,8 +2320,8 @@ function showPermitRecordModal(row, id) {
         <div class="pm-card-content">
           <div class="pm-fields">
             <div class="pm-field"><span class="pm-label">Date of Receipt</span><span class="pm-value">${fv("DateOfReceiptOfApplication")}</span></div>
-            <div class="pm-field"><span class="pm-label">Screening</span><span class="pm-value"><span class="pm-badge ${screening === "Done" ? "pm-badge-green" : "pm-badge-amber"}" style="font-size:11px">${escHtml(screening)}</span></span></div>
-            ${screening === "Done" || row.Screening_Date ? `<div class="pm-field"><span class="pm-label">Date of Screening</span><span class="pm-value">${fv("Screening_Date")}</span></div>` : ""}
+            <div class="pm-field"><span class="pm-label">Date of Screening</span><span class="pm-value">${fv("Screening_Date")}</span></div>
+            <div class="pm-field"><span class="pm-label">Date of Site Verification</span><span class="pm-value">${fv("DateOfSiteVerification")}</span></div>
           </div>
         </div>
       </div>
@@ -2502,22 +2543,7 @@ async function startPmSectionEdit(menuItem) {
   let formHtml = '<div class="pm-edit-fields">';
   fieldNames.forEach((f) => {
     const val = row[f] ?? "";
-    if (section === "application" && f === "Screening") {
-      formHtml += renderPermitFormField(
-        f,
-        val || "Not Done",
-        fieldOptions,
-        null,
-        'onchange="toggleScreeningDate(this)"',
-        table,
-      );
-      const showDate = val === "Done" || row.Screening_Date;
-      formHtml += `<div id="screening-date-group" style="${showDate ? "" : "display:none"}">${renderPermitFormField("Screening_Date", row.Screening_Date || "", fieldOptions, null, "", table)}</div>`;
-    } else if (section === "application" && f === "Screening_Date") {
-      // already rendered above
-    } else {
-      formHtml += renderPermitFormField(f, val, fieldOptions, null, "", table);
-    }
+    formHtml += renderPermitFormField(f, val, fieldOptions, null, "", table);
   });
   formHtml += "</div>";
   formHtml += `<div class="pm-edit-actions">
@@ -2527,6 +2553,59 @@ async function startPmSectionEdit(menuItem) {
 
   contentEl.innerHTML = formHtml;
   contentEl._originalHTML = originalHTML;
+  bindPermitModalFieldUX(modal);
+}
+
+function bindPermitModalFieldUX(modal) {
+  if (!modal || modal._permitFieldUXBound) return;
+  modal._permitFieldUXBound = true;
+
+  modal.addEventListener("focusin", (e) => {
+    const el = e.target;
+    if (!el || !(el.matches("input[data-col], textarea[data-col], select[data-col]"))) return;
+    if (el.dataset.firstSelectDone) return;
+    el.dataset.firstSelectDone = "1";
+    if (el.tagName === "INPUT") {
+      const t = (el.type || "text").toLowerCase();
+      if (!["checkbox", "radio", "file", "button", "submit"].includes(t)) {
+        setTimeout(() => {
+          try {
+            el.select();
+          } catch (_) {}
+        }, 0);
+      }
+    }
+  });
+
+  modal.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    const el = e.target;
+    if (!el || !(el.matches("input[data-col], textarea[data-col], select[data-col]"))) return;
+    if (el.tagName === "TEXTAREA") return;
+
+    // Let autocomplete handle Enter when dropdown is open.
+    const dd = el.parentNode?.querySelector?.(".autocomplete-dropdown.open");
+    if (dd) return;
+
+    const fields = Array.from(
+      modal.querySelectorAll(".pm-card [data-col]:not([disabled])"),
+    ).filter((f) => f.offsetParent !== null);
+    const idx = fields.indexOf(el);
+    if (idx < 0) return;
+
+    e.preventDefault();
+    const next = fields[idx + 1];
+    if (next) {
+      next.focus();
+      if (next.tagName === "INPUT") {
+        setTimeout(() => {
+          try {
+            next.select();
+          } catch (_) {}
+        }, 0);
+      }
+    }
+  });
 }
 
 // ── Save section edit ────────────────────────────────────────
@@ -3508,8 +3587,8 @@ async function showNewRecordModal(table) {
           <div class="pm-card"><div class="pm-card-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Application Details</div>
             <div class="pm-edit-fields">
               ${rf("DateOfReceiptOfApplication")}
-              ${renderPermitFormField("Screening", "Not Done", fieldOptions, null, 'onchange="toggleScreeningDate(this)"')}
-              <div id="screening-date-group" style="display:none">${rf("Screening_Date")}</div>
+              ${rf("Screening_Date")}
+              ${rf("DateOfSiteVerification")}
             </div>
           </div>
           <div class="pm-card"><div class="pm-card-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Permit Details</div>
@@ -3528,6 +3607,7 @@ async function showNewRecordModal(table) {
       </div>`;
       modal.innerHTML = html;
       document.body.appendChild(modal);
+      bindPermitModalFieldUX(modal);
       // Auto-fill PermitHolder from establishment name in new record
       const nameInput = modal.querySelector('[data-col="RegisteredNameOfUndertaking"]');
       const holderInput = modal.querySelector('[data-col="PermitHolder"]');
@@ -3602,9 +3682,6 @@ async function showEditRecordModal(table, id) {
     if (table === "PERMIT") {
       // ── PERMIT-specific edit modal ──
       const rf = (f) => renderPermitFormField(f, row[f], fieldOptions);
-      const screening =
-        row.Screening || (row.Screening_Date ? "Done" : "Not Done");
-      const showScreenDate = screening === "Done" || !!row.Screening_Date;
       let html = `<div class="modal pm-modal">
       <div class="pm-header">
         <div class="pm-header-left">
@@ -3629,8 +3706,8 @@ async function showEditRecordModal(table, id) {
           <div class="pm-card"><div class="pm-card-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Application Details</div>
             <div class="pm-edit-fields">
               ${rf("DateOfReceiptOfApplication")}
-              ${renderPermitFormField("Screening", screening, fieldOptions, null, 'onchange="toggleScreeningDate(this)"')}
-              <div id="screening-date-group" style="${showScreenDate ? "" : "display:none"}">${rf("Screening_Date")}</div>
+              ${rf("Screening_Date")}
+              ${rf("DateOfSiteVerification")}
             </div>
           </div>
           <div class="pm-card"><div class="pm-card-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Permit Details</div>
@@ -3660,6 +3737,7 @@ async function showEditRecordModal(table, id) {
       </div>`;
       modal.innerHTML = html;
       document.body.appendChild(modal);
+      bindPermitModalFieldUX(modal);
       loadEditDocuments('PERMIT', id, row);
       // Auto-fill PermitHolder from establishment name
       const nameInput = modal.querySelector('[data-col="RegisteredNameOfUndertaking"]');
@@ -5662,12 +5740,20 @@ function ddRenderFields() {
   fields.forEach(function (field) {
     var values = opts[field] || [];
     var fid = field.replace(/[^a-zA-Z0-9]/g, "_");
+    var displayLabel = getFieldLabel(table, field);
+    var sectionLabel = table === "PERMIT" ? getPermitSectionLabel(field) : "";
     h += '<div class="dd-field-group">';
     h +=
       '<div class="dd-field-hdr" data-toggle="' +
       fid +
       '" style="cursor:pointer">';
-    h += '<span class="dd-field-name">' + escHtml(field) + "</span>";
+    h +=
+      '<span class="dd-field-name">' +
+      escHtml(displayLabel) +
+      (sectionLabel ? ' <span style="font-size:10px;color:var(--text-muted);font-weight:400">· ' + escHtml(sectionLabel) + '</span>' : "") +
+      '<span style="display:block;font-size:10px;color:var(--text-muted);font-weight:400">' +
+      escHtml(field) +
+      "</span></span>";
     h += '<span class="dd-field-count">' + values.length + " options</span>";
     h +=
       '<span style="margin-left:auto;font-size:11px;color:var(--text-muted)" class="dd-toggle-lbl">&#9654; Expand</span>';
@@ -6042,8 +6128,14 @@ function frRenderFields() {
   var h = '<div class="fr-grid">';
   cols.forEach(function (col) {
     var current = renames[col.name] || "";
+    var displayLabel = getFieldLabel(table, col.name);
+    var sectionLabel = table === "PERMIT" ? getPermitSectionLabel(col.name) : "";
     h += '<div class="fr-row">';
-    h += '<div class="fr-original">' + escHtml(col.name) + "</div>";
+    h +=
+      '<div class="fr-original">' +
+      escHtml(displayLabel) +
+      (sectionLabel ? '<div style="font-size:10px;color:var(--text-muted);margin-top:2px">' + escHtml(sectionLabel) + '</div>' : '') +
+      '<div style="font-size:10px;color:var(--text-muted);margin-top:2px">' + escHtml(col.name) + '</div></div>';
     h += '<div class="fr-arrow">&rarr;</div>';
     h +=
       '<input type="text" class="fr-input" data-field="' +

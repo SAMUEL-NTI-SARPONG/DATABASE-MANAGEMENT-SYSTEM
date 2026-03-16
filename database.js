@@ -116,7 +116,8 @@ async function initDatabase() {
     PermitNumber TEXT, ContactPerson TEXT, TelephoneNumber TEXT, Email TEXT,
     FacilityLocation TEXT, District TEXT, Jurisdiction TEXT, Latitude TEXT,
     Longitude TEXT, FileLocation TEXT, DateOfReceiptOfApplication TEXT,
-    Screening_Date TEXT, DateOfReceiptOfDraft TEXT, DateOfReceiptOfRevised TEXT,
+    Screening_Date TEXT, DateOfSiteVerification TEXT,
+    DateOfReceiptOfDraft TEXT, DateOfReceiptOfRevised TEXT,
     DateReviewCommentWasSentToProponent TEXT, DateOfSubmissionOfEMP TEXT,
     DateOfTRC TEXT, DateSentToHeadOffice TEXT, DateReceivedFromHeadOffice TEXT,
     DateOfIssueOfPermit TEXT, PermitExpirationDate TEXT, PermitRenewalDate TEXT,
@@ -389,6 +390,13 @@ async function initDatabase() {
   }
   try {
     db._db.run(`ALTER TABLE PERMIT ADD COLUMN Address TEXT DEFAULT ''`);
+  } catch (e) {
+    /* already exists */
+  }
+  try {
+    db._db.run(
+      `ALTER TABLE PERMIT ADD COLUMN DateOfSiteVerification TEXT DEFAULT ''`,
+    );
   } catch (e) {
     /* already exists */
   }
