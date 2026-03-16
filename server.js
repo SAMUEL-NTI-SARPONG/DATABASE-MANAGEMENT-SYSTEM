@@ -85,6 +85,128 @@ const fileUpload = multer({
 
 const DATA_TABLES = ["PERMIT", "MOVEMENT", "WASTE", "Stores", "tbl_keyword"];
 
+const ACCESS_TABLE_MAP = {
+  PERMIT: "PERMIT",
+  MOVEMENT: "MOVEMENT",
+  WASTE: "WASTE",
+  Stores: "Stores",
+  tbl_keyword: "tbl_keyword",
+  Permit: "PERMIT",
+  Movement: "MOVEMENT",
+  Waste: "WASTE",
+  stores: "Stores",
+  STORES: "Stores",
+  tbl_Keyword: "tbl_keyword",
+  TBL_KEYWORD: "tbl_keyword",
+};
+
+const PERMIT_MODAL_DROPDOWN_FIELDS = new Set([
+  "ClassificationOfUndertaking",
+  "FileLocation",
+  "District",
+  "Jurisdiction",
+  "PermittedBy",
+  "ApplicationStatusII",
+  "ApplicationStatus",
+  "Compliance",
+  "FileReturned",
+]);
+
+const CANONICAL_APPLICATION_INFO_OPTIONS = [
+  "New Application",
+  "Renewal of Permit",
+];
+
+let accessPermitFileLocationCache = {
+  cacheKey: "",
+  values: null,
+};
+
+function sanitizeDropdownOptionValue(value) {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  if (/^#+$/.test(normalized)) return "";
+  if (/^#+.*$/.test(normalized)) return "";
+  return normalized;
+}
+
+function getAccessFileCandidates() {
+  return [
+    path.join(APP_ROOT, "The Database.accdb"),
+    path.join(__dirname, "The Database.accdb"),
+    path.join(process.cwd(), "The Database.accdb"),
+  ].filter((filePath, index, arr) => arr.indexOf(filePath) === index);
+}
+
+async function getAccessPermitFileLocations() {
+  const accessFile = getAccessFileCandidates().find((filePath) =>
+    fs.existsSync(filePath),
+  );
+  if (!accessFile) return [];
+
+  const stat = fs.statSync(accessFile);
+  const cacheKey = `${accessFile}:${stat.mtimeMs}:${stat.size}`;
+  if (
+    accessPermitFileLocationCache.values &&
+    accessPermitFileLocationCache.cacheKey === cacheKey
+  ) {
+    return accessPermitFileLocationCache.values;
+  }
+
+  try {
+    const buffer = fs.readFileSync(accessFile);
+    await loadMdbReader();
+    const reader = new MDBReader(buffer);
+    const permitTableName = reader
+      .getTableNames()
+      .find((name) => ACCESS_TABLE_MAP[name] === "PERMIT");
+    if (!permitTableName) return [];
+
+    const rows = reader.getTable(permitTableName).getData();
+    const values = mergeDistinctOptionValues(
+      [],
+      rows.map((row) => row.FileLocation),
+    );
+    accessPermitFileLocationCache = { cacheKey, values };
+    return values;
+  } catch {
+    return [];
+  }
+}
+
+function filterHiddenDropdownOptions(db, table, options) {
+  const hiddenRows = db.all(
+    "SELECT field_name, option_value FROM hidden_dropdown_options WHERE table_name = ?",
+    [table],
+  );
+  if (!hiddenRows.length) return options;
+
+  const hiddenByField = new Map();
+  for (const row of hiddenRows) {
+    if (!hiddenByField.has(row.field_name)) hiddenByField.set(row.field_name, []);
+    hiddenByField.get(row.field_name).push(
+      sanitizeDropdownOptionValue(row.option_value).toLowerCase(),
+    );
+  }
+
+  for (const [field, list] of Object.entries(options)) {
+    const hidden = hiddenByField.get(field) || [];
+    options[field] = (list || []).filter(
+      (value) => !hidden.includes(sanitizeDropdownOptionValue(value).toLowerCase()),
+    );
+  }
+  return options;
+}
+
+function filterManagedDropdownFields(table, options) {
+  if (table !== "PERMIT") return options;
+  const filtered = {};
+  for (const [field, values] of Object.entries(options)) {
+    if (PERMIT_MODAL_DROPDOWN_FIELDS.has(field)) filtered[field] = values;
+  }
+  return filtered;
+}
+
 // ── Backup directory ─────────────────────────────────────────
 const BACKUP_DIR = path.join(APP_ROOT, "backups");
 if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
@@ -712,35 +834,29 @@ const FIELD_OPTIONS = {
 function mergeDistinctOptionValues(baseList, extraList) {
   const out = [...(Array.isArray(baseList) ? baseList : [])];
   for (const v of extraList || []) {
-    const val = String(v || "").trim();
+    const val = sanitizeDropdownOptionValue(v);
     if (!val) continue;
     if (!out.some((x) => x.toLowerCase() === val.toLowerCase())) out.push(val);
   }
   return out;
 }
 
-function enrichPermitDropdownOptionsFromData(db, options) {
+async function enrichPermitDropdownOptionsFromSources(db, options) {
   if (!options) return options;
-  const dynamicFileLocations = db
-    .all(
-      "SELECT DISTINCT TRIM(FileLocation) AS v FROM PERMIT WHERE FileLocation IS NOT NULL AND TRIM(FileLocation) != '' ORDER BY v ASC",
-    )
-    .map((r) => r.v);
-  const dynamicAppInfo = db
-    .all(
-      "SELECT DISTINCT TRIM(ApplicationStatusII) AS v FROM PERMIT WHERE ApplicationStatusII IS NOT NULL AND TRIM(ApplicationStatusII) != '' ORDER BY v ASC",
-    )
-    .map((r) => r.v);
 
-  options.FileLocation = mergeDistinctOptionValues(
-    options.FileLocation,
-    dynamicFileLocations,
-  );
-  options.ApplicationStatusII = mergeDistinctOptionValues(
-    options.ApplicationStatusII,
-    dynamicAppInfo,
-  );
-  return options;
+  const enriched = JSON.parse(JSON.stringify(options));
+  const accessFileLocations = await getAccessPermitFileLocations();
+
+  enriched.FileLocation = accessFileLocations.length
+    ? mergeDistinctOptionValues(accessFileLocations, enriched.FileLocation)
+    : mergeDistinctOptionValues(enriched.FileLocation, []);
+  enriched.ApplicationStatusII = [...CANONICAL_APPLICATION_INFO_OPTIONS];
+
+  for (const field of Object.keys(enriched)) {
+    enriched[field] = mergeDistinctOptionValues([], enriched[field]);
+  }
+
+  return filterHiddenDropdownOptions(db, "PERMIT", enriched);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -2356,14 +2472,14 @@ app.get("/api/tables/:table/columns", auth, (req, res) => {
 });
 
 // Field dropdown options for forms
-app.get("/api/field-options/:table", auth, (req, res) => {
+app.get("/api/field-options/:table", auth, async (req, res) => {
   try {
     const db = getDb();
     const table = req.params.table;
     let options = { ...(FIELD_OPTIONS[table] || {}) };
 
     if (table === "PERMIT") {
-      options = enrichPermitDropdownOptionsFromData(db, options);
+      options = await enrichPermitDropdownOptionsFromSources(db, options);
     }
 
     // Dynamically inject employee names for OfficerWorkingOnFile
@@ -2396,11 +2512,18 @@ app.get("/api/field-options/:table", auth, (req, res) => {
       [table],
     );
     for (const co of customOpts) {
+      if (table === "PERMIT" && co.field_name === "ApplicationStatusII") {
+        continue;
+      }
       if (!options[co.field_name]) options[co.field_name] = [];
-      if (!options[co.field_name].includes(co.option_value)) {
-        options[co.field_name].push(co.option_value);
+      const cleanValue = sanitizeDropdownOptionValue(co.option_value);
+      if (!cleanValue) continue;
+      if (!options[co.field_name].includes(cleanValue)) {
+        options[co.field_name].push(cleanValue);
       }
     }
+
+    options = filterHiddenDropdownOptions(db, table, options);
 
     res.json(options);
   } catch (err) {
@@ -5504,7 +5627,7 @@ app.post(
 // --------------------------------------------------------------
 
 /** Get all dropdown definitions for a table (hardcoded + custom) */
-app.get("/api/dropdown-options/:table", auth, (req, res) => {
+app.get("/api/dropdown-options/:table", auth, async (req, res) => {
   try {
     const db = getDb();
     const table = req.params.table;
@@ -5512,9 +5635,9 @@ app.get("/api/dropdown-options/:table", auth, (req, res) => {
       return res.status(400).json({ error: "Invalid table" });
 
     // Start with hardcoded defaults
-    const defaults = JSON.parse(JSON.stringify(FIELD_OPTIONS[table] || {}));
+    let defaults = JSON.parse(JSON.stringify(FIELD_OPTIONS[table] || {}));
     if (table === "PERMIT") {
-      enrichPermitDropdownOptionsFromData(db, defaults);
+      defaults = await enrichPermitDropdownOptionsFromSources(db, defaults);
     }
 
     // Overlay custom options
@@ -5523,9 +5646,14 @@ app.get("/api/dropdown-options/:table", auth, (req, res) => {
       [table],
     );
     for (const c of customs) {
+      if (table === "PERMIT" && c.field_name === "ApplicationStatusII") {
+        continue;
+      }
       if (!defaults[c.field_name]) defaults[c.field_name] = [];
-      if (!defaults[c.field_name].includes(c.option_value)) {
-        defaults[c.field_name].push(c.option_value);
+      const cleanValue = sanitizeDropdownOptionValue(c.option_value);
+      if (!cleanValue) continue;
+      if (!defaults[c.field_name].includes(cleanValue)) {
+        defaults[c.field_name].push(cleanValue);
       }
     }
 
@@ -5537,6 +5665,9 @@ app.get("/api/dropdown-options/:table", auth, (req, res) => {
     for (const cf of customDropdownFields) {
       if (!defaults[cf.field_name]) defaults[cf.field_name] = [];
     }
+
+    defaults = filterHiddenDropdownOptions(db, table, defaults);
+    defaults = filterManagedDropdownFields(table, defaults);
 
     res.json(defaults);
   } catch (e) {
@@ -5551,11 +5682,39 @@ app.post("/api/dropdown-options/:table/:field", auth, (req, res) => {
       return res.status(403).json({ error: "Admin only" });
     const db = getDb();
     const { table, field } = req.params;
-    const { value } = req.body;
-    if (!value || !value.trim())
+    const cleanValue = sanitizeDropdownOptionValue(req.body.value);
+    if (!cleanValue)
       return res.status(400).json({ error: "Value is required" });
     if (!DATA_TABLES.includes(table))
       return res.status(400).json({ error: "Invalid table" });
+    if (
+      table === "PERMIT" &&
+      !Object.prototype.hasOwnProperty.call(
+        filterManagedDropdownFields(table, { [field]: [] }),
+        field,
+      )
+    ) {
+      return res.status(400).json({
+        error: "This field is not managed from Dropdown Menus",
+      });
+    }
+    if (
+      table === "PERMIT" &&
+      field === "ApplicationStatusII" &&
+      !CANONICAL_APPLICATION_INFO_OPTIONS.some(
+        (option) => option.toLowerCase() === cleanValue.toLowerCase(),
+      )
+    ) {
+      return res.status(400).json({
+        error:
+          'Application Info only allows "New Application" and "Renewal of Permit".',
+      });
+    }
+
+    db.run(
+      "DELETE FROM hidden_dropdown_options WHERE table_name = ? AND field_name = ? AND option_value = ?",
+      [table, field, cleanValue],
+    );
 
     const maxOrder =
       db.get(
@@ -5565,10 +5724,10 @@ app.post("/api/dropdown-options/:table/:field", auth, (req, res) => {
 
     db.run(
       "INSERT OR IGNORE INTO custom_dropdown_options (table_name, field_name, option_value, sort_order) VALUES (?, ?, ?, ?)",
-      [table, field, value.trim(), maxOrder + 1],
+      [table, field, cleanValue, maxOrder + 1],
     );
     saveToDisk();
-    logActivity(req, "add_dropdown_option", table, field + ": " + value.trim());
+    logActivity(req, "add_dropdown_option", table, field + ": " + cleanValue);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -5576,30 +5735,62 @@ app.post("/api/dropdown-options/:table/:field", auth, (req, res) => {
 });
 
 /** Remove option from a dropdown */
-app.delete("/api/dropdown-options/:table/:field/:value", auth, (req, res) => {
+app.delete("/api/dropdown-options/:table/:field/:value", auth, async (req, res) => {
   try {
     if (req.user.role !== "admin")
       return res.status(403).json({ error: "Admin only" });
     const db = getDb();
     const { table, field, value } = req.params;
-    // Check if it's a hardcoded option � we can't delete those from DB, but we can mark them
-    const hardcoded = (FIELD_OPTIONS[table] || {})[field] || [];
-    if (hardcoded.includes(decodeURIComponent(value))) {
+    const decodedValue = sanitizeDropdownOptionValue(decodeURIComponent(value));
+    if (!decodedValue)
+      return res.status(400).json({ error: "Invalid option value" });
+    if (
+      table === "PERMIT" &&
+      !Object.prototype.hasOwnProperty.call(
+        filterManagedDropdownFields(table, { [field]: [] }),
+        field,
+      )
+    ) {
+      return res.status(400).json({
+        error: "This field is not managed from Dropdown Menus",
+      });
+    }
+    if (table === "PERMIT" && field === "ApplicationStatusII") {
       return res.status(400).json({
         error:
-          "Cannot remove a built-in option. You can only remove custom-added options.",
+          'Application Info is locked to "New Application" and "Renewal of Permit".',
       });
+    }
+
+    let builtInOptions = mergeDistinctOptionValues(
+      [],
+      (FIELD_OPTIONS[table] || {})[field] || [],
+    );
+    if (table === "PERMIT" && field === "FileLocation") {
+      builtInOptions = mergeDistinctOptionValues(
+        builtInOptions,
+        await getAccessPermitFileLocations(),
+      );
+    }
+    const isBuiltIn = builtInOptions.some(
+      (option) => option.toLowerCase() === decodedValue.toLowerCase(),
+    );
+    if (isBuiltIn) {
+      db.run(
+        "INSERT OR IGNORE INTO hidden_dropdown_options (table_name, field_name, option_value) VALUES (?, ?, ?)",
+        [table, field, decodedValue],
+      );
     }
     db.run(
       "DELETE FROM custom_dropdown_options WHERE table_name = ? AND field_name = ? AND option_value = ?",
-      [table, field, decodeURIComponent(value)],
+      [table, field, decodedValue],
     );
     saveToDisk();
     logActivity(
       req,
       "remove_dropdown_option",
       table,
-      field + ": " + decodeURIComponent(value),
+      field + ": " + decodedValue,
     );
     res.json({ ok: true });
   } catch (e) {

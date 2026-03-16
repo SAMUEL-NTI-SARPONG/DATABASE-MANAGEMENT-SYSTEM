@@ -357,6 +357,18 @@ async function initDatabase() {
     `CREATE INDEX IF NOT EXISTS idx_cdo_table_field ON custom_dropdown_options(table_name, field_name)`,
   );
 
+  db.exec(`CREATE TABLE IF NOT EXISTS hidden_dropdown_options (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_name TEXT NOT NULL,
+    field_name TEXT NOT NULL,
+    option_value TEXT NOT NULL,
+    hidden_at TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(table_name, field_name, option_value)
+  )`);
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_hdo_table_field ON hidden_dropdown_options(table_name, field_name)`,
+  );
+
   // Custom fields metadata — tracks user-added columns and their config
   db.exec(`CREATE TABLE IF NOT EXISTS custom_fields (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -399,6 +411,44 @@ async function initDatabase() {
     );
   } catch (e) {
     /* already exists */
+  }
+
+  // Normalize legacy permit application-info values to the canonical options.
+  try {
+    db._db.run(
+      `UPDATE PERMIT SET ApplicationStatusII = 'New Application'
+       WHERE lower(trim(ApplicationStatusII)) = 'new'`,
+    );
+    db._db.run(
+      `UPDATE PERMIT SET ApplicationStatusII = 'Renewal of Permit'
+       WHERE lower(trim(ApplicationStatusII)) IN ('renewal', 'existing')`,
+    );
+    db._db.run(
+      `UPDATE PERMIT SET ApplicationStatusII = ''
+       WHERE ApplicationStatusII IS NOT NULL
+         AND trim(ApplicationStatusII) != ''
+         AND trim(ApplicationStatusII) NOT IN ('New Application', 'Renewal of Permit')`,
+    );
+  } catch (e) {
+    /* ignore normalization failures */
+  }
+
+  // Remove broken or obsolete custom dropdown options for PERMIT.
+  try {
+    db._db.run(
+      `DELETE FROM custom_dropdown_options
+       WHERE table_name = 'PERMIT'
+         AND field_name = 'ApplicationStatusII'
+         AND trim(option_value) NOT IN ('New Application', 'Renewal of Permit')`,
+    );
+    db._db.run(
+      `DELETE FROM custom_dropdown_options
+       WHERE option_value IS NULL
+          OR trim(option_value) = ''
+          OR trim(option_value) GLOB '########*'`,
+    );
+  } catch (e) {
+    /* ignore cleanup failures */
   }
 
   // Field renames — tracks display label overrides for existing columns
